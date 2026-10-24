@@ -59,8 +59,6 @@ export async function getAdminSummary() {
   return data?.[0] ?? null
 }
 
-const PRODUCT_SAFE_COLUMNS = 'id, category_id, seller_id, name, slug, sku, short_description, description, price, currency, specifications, publication_status, moderation_status, moderated_by, moderated_at, moderation_reason, stock_verification_status, is_featured, track_inventory, weight_grams, dimensions, seo_title, seo_description, created_at, updated_at'
-
 export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
   const client = getSupabase()
   const { data, error } = await client.rpc('admin_list_products', { p_search: search.trim() })
@@ -115,22 +113,46 @@ export async function saveCategory(input: Database['public']['Tables']['categori
 
 export async function saveProduct(input: Database['public']['Tables']['products']['Insert'], id?: string) {
   const client = getSupabase()
+  // The shared project deliberately removes table-level SELECT from products.
+  // Do not ask PostgREST to return the mutated row; that requires SELECT grants
+  // for the representation and fails even when the admin UPDATE/INSERT is valid.
+  const productId = id ?? crypto.randomUUID()
   const result = id
-    ? await client.from('products').update(input).eq('id', id).select(PRODUCT_SAFE_COLUMNS).single()
-    : await client.from('products').insert(input).select(PRODUCT_SAFE_COLUMNS).single()
+    ? await client.from('products').update(input).eq('id', id)
+    : await client.from('products').insert({ ...input, id: productId })
   assertError(result.error)
-  return result.data
+  const savedProducts = await client.rpc('admin_list_products', { p_search: String(input.slug ?? '') })
+  assertError(savedProducts.error)
+  const saved = (savedProducts.data ?? []).find((row) => row.id === productId)
+  if (!saved) throw new Error('Product changes could not be verified after saving.')
+  return { id: saved.id, publication_status: saved.publication_status }
 }
 
 export async function getAdminProductEditor(id: string) {
   const client = getSupabase()
-  const [product, variants, images] = await Promise.all([
-    client.from('products').select('id, category_id, name, slug, sku, short_description, description, price, currency, specifications, publication_status, is_featured, track_inventory, weight_grams, dimensions, seo_title, seo_description, created_at, updated_at').eq('id', id).single(),
+  const [products, variants, images, inventory] = await Promise.all([
+    client.rpc('admin_list_products', { p_search: '' }),
     client.from('product_variants').select('id, product_id, option_label, option_value, sku, price_override, attributes, is_active, sort_order, created_at, updated_at').eq('product_id', id).order('sort_order').limit(100),
     client.from('product_images').select('id, product_id, image_url, storage_path, alt_text, sort_order, is_primary, created_at').eq('product_id', id).order('sort_order').limit(100),
+    client.from('product_inventory').select('id, variant_id, quantity, low_stock_threshold, updated_at').eq('product_id', id).limit(200),
   ])
-  assertError(product.error); assertError(variants.error); assertError(images.error)
-  return { product: product.data, variants: (variants.data ?? []) as AdminVariant[], images: images.data ?? [] }
+  assertError(products.error); assertError(variants.error); assertError(images.error); assertError(inventory.error)
+  const productRow = (products.data ?? []).find((row) => row.id === id)
+  if (!productRow) return null
+  const [seller, category] = await Promise.all([
+    productRow.seller_id ? client.from('seller_profiles').select('id, shop_name, slug, status').eq('id', productRow.seller_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    productRow.category_id ? client.from('categories').select('id, name, slug').eq('id', productRow.category_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+  ])
+  assertError(seller.error); assertError(category.error)
+  const mappedImages = await Promise.all((images.data ?? []).map(async (image) => {
+    if (image.image_url) return { ...image, display_url: image.image_url }
+    if (!image.storage_path) return { ...image, display_url: null }
+    const bucket = productRow.publication_status === 'published' ? 'product-images' : 'product-drafts'
+    if (bucket === 'product-images') return { ...image, display_url: client.storage.from(bucket).getPublicUrl(image.storage_path).data.publicUrl }
+    const signed = await client.storage.from(bucket).createSignedUrl(image.storage_path, 600)
+    return { ...image, display_url: signed.data?.signedUrl ?? null }
+  }))
+  return { product: productRow, variants: (variants.data ?? []) as AdminVariant[], images: mappedImages, inventory: inventory.data ?? [], seller: seller.data, category: category.data }
 }
 
 export async function saveProductVariant(input: Database['public']['Tables']['product_variants']['Insert'], id?: string) {
@@ -155,16 +177,39 @@ export async function moderateProduct(id: string, status: Database['public']['Ta
   assertError(error)
 }
 
-export async function uploadProductImage(productId: string, file: File, draft = true) {
+export async function uploadProductImage(productId: string, file: File, draft = true, previousDraft = draft) {
   const client = getSupabase()
   const bucket = draft ? 'product-drafts' : 'product-images'
   const path = `${productId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`
   const upload = await client.storage.from(bucket).upload(path, file, { upsert: false, contentType: file.type })
   assertError(upload.error)
   const imageUrl = draft ? null : client.storage.from(bucket).getPublicUrl(path).data.publicUrl
-  const image = await client.from('product_images').insert({ product_id: productId, storage_path: draft ? path : null, image_url: imageUrl, alt_text: file.name, is_primary: true, sort_order: 0 }).select().single()
-  assertError(image.error)
-  return image.data
+  const { data: currentImages, error: currentImagesError } = await client.from('product_images')
+    .select('id, storage_path, sort_order, is_primary')
+    .eq('product_id', productId)
+    .order('sort_order', { ascending: true })
+    .limit(100)
+
+  if (currentImagesError) {
+    await client.storage.from(bucket).remove([path])
+    throw new Error(currentImagesError.message)
+  }
+
+  const currentPrimary = currentImages?.find((image) => image.is_primary) ?? currentImages?.[0]
+  const imageValues = { storage_path: draft ? path : null, image_url: imageUrl, alt_text: file.name, is_primary: true }
+  const result = currentPrimary
+    ? await client.from('product_images').update(imageValues).eq('id', currentPrimary.id)
+    : await client.from('product_images').upsert({ ...imageValues, product_id: productId, sort_order: 0 }, { onConflict: 'product_id,sort_order' })
+
+  if (result.error) {
+    await client.storage.from(bucket).remove([path])
+    throw new Error(result.error.message)
+  }
+
+  if (currentPrimary?.storage_path) {
+    const previousBucket = previousDraft ? 'product-drafts' : 'product-images'
+    await client.storage.from(previousBucket).remove([currentPrimary.storage_path])
+  }
 }
 
 export async function listAdminOrders(search = '', status = 'all'): Promise<AdminOrder[]> {
@@ -178,17 +223,19 @@ export async function listAdminOrders(search = '', status = 'all'): Promise<Admi
 
 export async function getAdminOrderDetail(id: string) {
   const client = getSupabase()
-  const [order, items, notes] = await Promise.all([
+  const [order, items, notes, history] = await Promise.all([
     client.from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, created_at, updated_at').eq('id', id).single(),
     client.from('order_items').select('id, order_id, product_id, variant_id, seller_id, seller_name_snapshot, product_name_snapshot, sku_snapshot, variant_snapshot, product_snapshot, quantity, unit_price, line_total, vendor_fulfillment_status, tracking_number, tracking_url, vendor_note, vendor_updated_at, created_at').eq('order_id', id).order('created_at').limit(100),
     client.from('admin_order_notes').select('id, order_id, created_by, note, created_at').eq('order_id', id).order('created_at', { ascending: false }).limit(100),
+    client.from('admin_audit_logs').select('id, action, entity, entity_id, details, created_at').eq('entity', 'orders').eq('entity_id', id).order('created_at', { ascending: false }).limit(100),
   ])
-  assertError(order.error); assertError(items.error); assertError(notes.error)
-  return { order: order.data as AdminOrder, items: (items.data ?? []) as AdminOrderItem[], notes: notes.data ?? [] }
+  assertError(order.error); assertError(items.error)
+  const warnings = [notes.error && `Admin notes unavailable: ${notes.error.message}`, history.error && `Status history unavailable: ${history.error.message}`].filter((message): message is string => Boolean(message))
+  return { order: order.data as AdminOrder, items: (items.data ?? []) as AdminOrderItem[], notes: notes.data ?? [], history: history.data ?? [], warnings }
 }
 
-export async function updateOrder(id: string, input: Database['public']['Tables']['orders']['Update']) {
-  const { error } = await getSupabase().from('orders').update(input).eq('id', id)
+export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status']) {
+  const { error } = await getSupabase().from('orders').update({ order_status }).eq('id', id)
   assertError(error)
 }
 
@@ -325,4 +372,16 @@ export async function saveAdminPromotion(input: Database['public']['Tables']['pr
 export async function deleteAdminPromotion(id: string) {
   const { error } = await getSupabase().from('promotions').delete().eq('id', id)
   assertError(error)
+}
+
+export async function uploadPublicMedia(file: File, folder = "categories"): Promise<string> {
+  if (file.size > 8 * 1024 * 1024) throw new Error("Images must be 8 MB or smaller.")
+  if (!["image/jpeg", "image/png", "image/webp", "image/avif"].includes(file.type)) throw new Error("Choose a JPG, PNG, WebP or AVIF image.")
+  const client = getSupabase()
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "")
+  const path = `${folder}/${crypto.randomUUID()}.${ext}`
+  const upload = await client.storage.from("product-images").upload(path, file, { upsert: false, contentType: file.type })
+  assertError(upload.error)
+  const { data } = client.storage.from("product-images").getPublicUrl(path)
+  return data.publicUrl
 }

@@ -5,3 +5,9 @@
 
 .admin-small-button--danger { border-color: #d6a39a; color: #914d42; background: #fff5f2; }
 .admin-small-button--danger:hover { border-color: #914d42; background: #f8e8e5; }
+.admin-inline-adjust { display: grid; grid-template-columns: 84px minmax(120px, 1fr) auto auto; align-items: center; gap: 6px; min-width: 340px; }
+.admin-inline-adjust input { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid #ddd9d1; border-radius: 4px; background: #fff; }
+@media (max-width: 640px) { .admin-inline-adjust { grid-template-columns: 1fr 1fr; min-width: 240px; } }
+.admin-sidebar{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#596054 #20231f}
+.admin-detail-gallery{display:flex;gap:10px;overflow-x:auto;padding:12px 0}.admin-detail-gallery img{width:min(68vw,220px);height:180px;flex:0 0 auto;border:1px solid #e7e3dc;background:#fff;object-fit:contain}.admin-detail-gallery .admin-thumb{width:220px;height:180px;flex:0 0 auto;display:grid;place-items:center}
+.admin-order-map{width:100%;height:260px;border:0;background:#eee}

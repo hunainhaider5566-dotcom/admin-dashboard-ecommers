@@ -1,9 +1,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Archive, ArrowLeft, BarChart3, Boxes, Check, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Users, X } from 'lucide-react'
+import { Archive, ArrowLeft, BarChart3, Boxes, Check, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { addOrderNote, adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminOrders, listAdminProducts, listAdminPromotions, listAuditLogs, listMarketplaceCases, listSellerApplications, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, updateAdminStoreSettings, updateOrder, updateProductStatus, uploadProductImage, type AdminCase, type AdminCategory, type AdminCustomer, type AdminHero, type AdminInventory, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminVariant } from '../services/admin/adminService'
+import { addOrderNote, adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminOrders, listAdminProducts, listAdminPromotions, listAuditLogs, listMarketplaceCases, listSellerApplications, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, updateAdminStoreSettings, updateOrder, updateProductStatus, uploadProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminCustomer, type AdminHero, type AdminInventory, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminVariant } from '../services/admin/adminService'
 import type { Database } from '../types/database'
 import '../admin.css'
 
@@ -88,21 +88,31 @@ function Overview() {
 
 function Products() {
   const { push } = useToast()
-  const [items, setItems] = useState<AdminProduct[]>([]); const [search, setSearch] = useState(''); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [editing, setEditing] = useState<AdminProduct | null | undefined>(undefined)
+  const [items, setItems] = useState<AdminProduct[]>([]); const [search, setSearch] = useState(''); const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [editing, setEditing] = useState<AdminProduct | null | undefined>(undefined); const [detailsId, setDetailsId] = useState<string | null>(null)
   const load = () => { setLoading(true); setError(null); void listAdminProducts(search).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Products could not be loaded.')).finally(() => setLoading(false)) }
   useEffect(load, [search])
   async function setPublication(item: AdminProduct) { const next = item.publication_status === 'published' ? 'draft' : 'published'; const label = next === 'published' ? 'publish' : 'unpublish'; if (!window.confirm(`Are you sure you want to ${label} “${item.name}”?`)) return; try { await updateProductStatus(item.id, next); push(`Product ${label}ed.`); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Publication update failed.', 'error') } }
   async function archive(id: string) { if (!window.confirm('Archive this product? It will no longer be published.')) return; try { await updateProductStatus(id, 'archived'); push('Product archived.'); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Product update failed.', 'error') } }
   async function moderate(item: AdminProduct, next: AdminProduct['moderation_status']) { const reason = next === 'rejected' || next === 'hidden' ? window.prompt('Record a moderation reason', item.moderation_reason ?? '') : undefined; if ((next === 'rejected' || next === 'hidden') && reason === null) return; try { await moderateProduct(item.id, next, reason ?? undefined); push(`Product marked ${next}.`); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Moderation update failed.', 'error') } }
-  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Catalog management</p><h2>Products</h2></div><button className="admin-button" onClick={() => setEditing(null)}><Plus size={16} /> New product</button></div><div className="admin-toolbar"><label className="admin-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, SKU or slug" /></label><button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button></div>{editing !== undefined && <ProductEditor product={editing ?? undefined} onSaved={() => { setEditing(undefined); load() }} onCancel={() => setEditing(undefined)} />}{error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No products found" detail="Create a product when your catalog is ready. The storefront will remain empty until products are published." action={<button className="admin-button" onClick={() => setEditing(null)}><Plus size={15} /> Create product</button>} /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Publication</th><th>Moderation</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="admin-product-cell">{item.image_url ? <img src={item.image_url} alt="" /> : <span className="admin-thumb"><Package size={15} /></span>}<span><strong>{item.name}</strong><small>{item.sku ?? 'No SKU'} · {item.slug}</small></span></div></td><td>{item.category?.name ?? 'Unassigned'}</td><td>{formatMoney(item.price)}</td><td>{item.track_inventory ? item.inventory : 'Not tracked'}</td><td><em className={statusClass(item.publication_status)}>{item.publication_status}</em></td><td><em className={statusClass(item.moderation_status)}>{item.moderation_status}</em></td><td><div className="admin-action-row"><button className="admin-icon-button" title="Edit product" onClick={() => setEditing(item)}><Edit2 size={15} /></button>{item.moderation_status === 'pending_review' && <><button className="admin-small-button" onClick={() => void moderate(item, 'approved')}>Approve</button><button className="admin-small-button admin-small-button--danger" onClick={() => void moderate(item, 'rejected')}>Reject</button></>}{item.moderation_status === 'approved' && <button className="admin-small-button admin-small-button--danger" onClick={() => void moderate(item, 'hidden')}>Hide</button>}{item.publication_status !== 'archived' && <button className="admin-icon-button" title={item.publication_status === 'published' ? 'Unpublish product' : 'Publish product'} onClick={() => void setPublication(item)}>{item.publication_status === 'published' ? <EyeOff size={15} /> : <Eye size={15} />}</button>}<button className="admin-icon-button" title="Archive product" onClick={() => void archive(item.id)}><Archive size={15} /></button></div></td></tr>)}</tbody></table></div>}</section>
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Catalog management</p><h2>Products</h2></div><button className="admin-button" onClick={() => setEditing(null)}><Plus size={16} /> New product</button></div><div className="admin-toolbar"><label className="admin-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, SKU or slug" /></label><button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button></div>{editing !== undefined && <ProductEditor key={editing?.id ?? 'new-product'} product={editing ?? undefined} onSaved={() => { setEditing(undefined); load() }} onCancel={() => setEditing(undefined)} />}{error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No products found" detail="Create a product when your catalog is ready. The storefront will remain empty until products are published." action={<button className="admin-button" onClick={() => setEditing(null)}><Plus size={15} /> Create product</button>} /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Category</th><th>Price</th><th>Stock</th><th>Publication</th><th>Moderation</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="admin-product-cell">{item.image_url ? <img src={item.image_url} alt="" /> : <span className="admin-thumb"><Package size={15} /></span>}<span><strong>{item.name}</strong><small>{item.sku ?? 'No SKU'} · {item.slug}</small></span></div></td><td>{item.category?.name ?? 'Unassigned'}</td><td>{formatMoney(item.price)}</td><td>{item.track_inventory ? item.inventory : 'Not tracked'}</td><td><em className={statusClass(item.publication_status)}>{item.publication_status}</em></td><td><em className={statusClass(item.moderation_status)}>{item.moderation_status}</em></td><td><div className="admin-action-row"><button className="admin-icon-button" title="View product details" aria-label={`View ${item.name} details`} onClick={() => setDetailsId(item.id)}><Info size={15} /></button><button type="button" className="admin-small-button" title="Edit product" onClick={() => setEditing(item)}><Edit2 size={14} /> Edit</button>{item.moderation_status === 'pending_review' && <><button className="admin-small-button" onClick={() => void moderate(item, 'approved')}>Approve</button><button className="admin-small-button admin-small-button--danger" onClick={() => void moderate(item, 'rejected')}>Reject</button></>}{item.moderation_status === 'approved' && <button className="admin-small-button admin-small-button--danger" onClick={() => void moderate(item, 'hidden')}>Hide</button>}{item.publication_status !== 'archived' && <button className="admin-icon-button" title={item.publication_status === 'published' ? 'Unpublish product' : 'Publish product'} onClick={() => void setPublication(item)}>{item.publication_status === 'published' ? <EyeOff size={15} /> : <Eye size={15} />}</button>}<button className="admin-icon-button" title="Archive product" onClick={() => void archive(item.id)}><Archive size={15} /></button></div></td></tr>)}</tbody></table></div>}{detailsId && <AdminProductDetails id={detailsId} onClose={() => setDetailsId(null)} onEdit={(id) => { const product = items.find((item) => item.id === id); setDetailsId(null); if (product) setEditing(product) }} />}</section>
+}
+
+function AdminProductDetails({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit: (id: string) => void }) {
+  const [detail, setDetail] = useState<Awaited<ReturnType<typeof getAdminProductEditor>> | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => { let active = true; setLoading(true); setError(null); void getAdminProductEditor(id).then((result) => { if (active) setDetail(result) }).catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Product details could not be loaded.') }).finally(() => { if (active) setLoading(false) }); return () => { active = false } }, [id, attempt])
+  const product = detail?.product
+  return <div className="admin-drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}><aside className="admin-drawer" role="dialog" aria-modal="true" aria-labelledby="admin-product-title"><div className="admin-panel-heading"><div><p className="admin-kicker">Catalog record</p><h3 id="admin-product-title">{product?.name ?? 'Product details'}</h3></div><button className="admin-icon-button" aria-label="Close product details" onClick={onClose}><X size={18} /></button></div>{loading ? <Loading /> : error ? <div className="admin-state admin-state--error" role="alert"><CircleAlert size={18} />{error}<button className="admin-button admin-button--outline" onClick={() => setAttempt((value) => value + 1)}>Retry</button></div> : !detail ? <Empty title="Product not found" detail="This product may have been removed or is no longer available to this admin account." /> : <><div className="admin-detail-gallery">{detail.images.filter((image) => image.display_url).map((image) => <img key={image.id} src={image.display_url ?? ''} alt={image.alt_text || product?.name || 'Product image'} />)}{detail.images.every((image) => !image.display_url) && <span className="admin-thumb"><Package size={24} /></span>}</div><div className="admin-drawer-section"><h4>Product information</h4><strong>{product?.name}</strong><span>{product?.description || product?.short_description || 'No description provided.'}</span><span>SKU: {product?.sku || '—'} · Slug: {product?.slug}</span><span>Category: {detail.category?.name || 'Unassigned'}</span><span>Price: {formatMoney(product?.price ?? 0)} {product?.currency}</span><span>Stock: {product?.track_inventory ? detail.inventory.reduce((sum, row) => sum + Number(row.quantity), 0) : 'Inventory not tracked'}</span></div><div className="admin-drawer-section"><h4>Publication and moderation</h4><span>Publication: {product?.publication_status}</span><span>Moderation: {product?.moderation_status}</span><span>Stock verification: {product?.stock_verification_status}</span>{product?.moderation_reason && <span>Moderation reason: {product.moderation_reason}</span>}</div><div className="admin-drawer-section"><h4>Seller</h4>{detail.seller ? <><strong>{detail.seller.shop_name} · {detail.seller.status}</strong><a href={`/shops/${detail.seller.slug}`} target="_blank" rel="noreferrer">Open public shop</a></> : <span>No seller associated.</span>}</div><div className="admin-drawer-section"><h4>Admin financial information</h4><span>Supplier cost: {product?.supplier_cost == null ? '—' : formatMoney(product.supplier_cost)}</span><span>Fulfilment expense: {formatMoney(product?.fulfillment_expense ?? 0)}</span><span>Minimum profit: {formatMoney(product?.minimum_profit ?? 0)}</span></div><div className="admin-drawer-section"><h4>Variants and stock</h4>{detail.variants.length ? detail.variants.map((variant) => { const stock = detail.inventory.find((row) => row.variant_id === variant.id); return <div className="admin-list-row" key={variant.id}><span><strong>{variant.option_label}: {variant.option_value}</strong><small>{variant.sku || 'No SKU'} · {variant.is_active ? 'Active' : 'Inactive'}</small></span><span>{variant.price_override == null ? 'Base price' : formatMoney(variant.price_override)} · Stock {stock?.quantity ?? '—'}</span></div> }) : <span>No variants.</span>}</div><div className="admin-drawer-section"><span>Created: {formatDate(product?.created_at ?? '')}</span><span>Updated: {formatDate(product?.updated_at ?? '')}</span><button className="admin-button" onClick={() => onEdit(id)}><Edit2 size={15} /> Edit product</button></div></>}</aside></div>
 }
 
 function ProductEditor({ product, onSaved, onCancel }: { product?: AdminProduct; onSaved: () => void; onCancel: () => void }) {
-  const { push } = useToast(); const [categories, setCategories] = useState<AdminCategory[]>([]); const [detail, setDetail] = useState<Awaited<ReturnType<typeof getAdminProductEditor>> | null>(null); const [saving, setSaving] = useState(false); const [image, setImage] = useState<File | null>(null); const [variantRows, setVariantRows] = useState<AdminVariant[]>([])
-  useEffect(() => { void listAdminCategories().then(setCategories).catch(() => undefined); if (product) void getAdminProductEditor(product.id).then((next) => { setDetail(next); setVariantRows(next.variants) }).catch((cause: unknown) => push(cause instanceof Error ? cause.message : 'Product details could not be loaded.', 'error')) }, [product, push])
-  if (product && !detail) return <div className="admin-panel"><Loading /></div>
+  const { push } = useToast(); const [categories, setCategories] = useState<AdminCategory[]>([]); const [detail, setDetail] = useState<Awaited<ReturnType<typeof getAdminProductEditor>> | null>(null); const [detailError, setDetailError] = useState<string | null>(null); const [saving, setSaving] = useState(false); const [image, setImage] = useState<File | null>(null); const [variantRows, setVariantRows] = useState<AdminVariant[]>([])
+  useEffect(() => { void listAdminCategories().then(setCategories).catch(() => undefined); if (product) void getAdminProductEditor(product.id).then((next) => { if (!next) throw new Error('Product not found.'); setDetail(next); setVariantRows(next.variants) }).catch((cause: unknown) => setDetailError(cause instanceof Error ? cause.message : 'Product details could not be loaded.')) }, [product, push])
+  if (product && !detail) return <div className="admin-panel">{detailError ? <div className="admin-state admin-state--error" role="alert">{detailError}</div> : <Loading />}</div>
   const current = detail?.product ?? product
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const name = String(data.get('name') ?? '').trim(); const slug = String(data.get('slug') ?? '').trim(); const price = Number(data.get('price')); if (!name || !slug || !Number.isFinite(price) || price < 0) { push('Enter a valid name, slug, and non-negative price.', 'error'); return } let specifications: unknown = []; let dimensions: unknown = {}; try { specifications = JSON.parse(String(data.get('specifications') || '[]')); dimensions = JSON.parse(String(data.get('dimensions') || '{}')) } catch { push('Specifications and dimensions must be valid JSON.', 'error'); return } setSaving(true); try { const saved = await saveProduct({ name, slug, price, currency: 'PKR', short_description: String(data.get('short_description') ?? ''), description: String(data.get('description') ?? ''), publication_status: String(data.get('publication_status') ?? 'draft') as Database['public']['Tables']['products']['Row']['publication_status'], is_featured: data.get('is_featured') === 'on', track_inventory: data.get('track_inventory') === 'on', category_id: String(data.get('category_id') || '') || null, specifications: specifications as Database['public']['Tables']['products']['Insert']['specifications'], dimensions: dimensions as Database['public']['Tables']['products']['Insert']['dimensions'], sku: String(data.get('sku') ?? '') || null, weight_grams: data.get('weight_grams') ? Number(data.get('weight_grams')) : null, seo_title: String(data.get('seo_title') ?? '') || null, seo_description: String(data.get('seo_description') ?? '') || null }, current?.id); if (!saved) throw new Error('The product was not returned after saving.'); if (image) await uploadProductImage(saved.id, image, true); for (const row of variantRows) await saveProductVariant({ product_id: saved.id, option_label: row.option_label, option_value: row.option_value, sku: row.sku, price_override: row.price_override, attributes: row.attributes, is_active: row.is_active, sort_order: row.sort_order }, row.id.startsWith('new-') ? undefined : row.id); push(current ? 'Product changes saved.' : 'Draft product created.'); onSaved() } catch (cause) { push(cause instanceof Error ? cause.message : 'Product could not be saved.', 'error') } finally { setSaving(false) } }
+  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const name = String(data.get('name') ?? '').trim(); const slug = String(data.get('slug') ?? '').trim(); const price = Number(data.get('price')); if (!name || !slug || !Number.isFinite(price) || price < 0) { push('Enter a valid name, slug, and non-negative price.', 'error'); return } let specifications: unknown = []; let dimensions: unknown = {}; try { specifications = JSON.parse(String(data.get('specifications') || '[]')); dimensions = JSON.parse(String(data.get('dimensions') || '{}')) } catch { push('Specifications and dimensions must be valid JSON.', 'error'); return } setSaving(true); try { const saved = await saveProduct({ name, slug, price, currency: 'PKR', short_description: String(data.get('short_description') ?? ''), description: String(data.get('description') ?? ''), publication_status: String(data.get('publication_status') ?? 'draft') as Database['public']['Tables']['products']['Row']['publication_status'], is_featured: data.get('is_featured') === 'on', track_inventory: data.get('track_inventory') === 'on', category_id: String(data.get('category_id') || '') || null, specifications: specifications as Database['public']['Tables']['products']['Insert']['specifications'], dimensions: dimensions as Database['public']['Tables']['products']['Insert']['dimensions'], sku: String(data.get('sku') ?? '') || null, weight_grams: data.get('weight_grams') ? Number(data.get('weight_grams')) : null, seo_title: String(data.get('seo_title') ?? '') || null, seo_description: String(data.get('seo_description') ?? '') || null }, current?.id); if (!saved) throw new Error('The product was not returned after saving.'); if (image) await uploadProductImage(saved.id, image, saved.publication_status !== 'published', current ? current.publication_status !== 'published' : saved.publication_status !== 'published'); for (const row of variantRows) await saveProductVariant({ product_id: saved.id, option_label: row.option_label, option_value: row.option_value, sku: row.sku, price_override: row.price_override, attributes: row.attributes, is_active: row.is_active, sort_order: row.sort_order }, row.id.startsWith('new-') ? undefined : row.id); push(current ? 'Product changes saved.' : 'Draft product created.'); onSaved() } catch (cause) { push(cause instanceof Error ? cause.message : 'Product could not be saved.', 'error') } finally { setSaving(false) } }
   function addVariant() { setVariantRows((rows) => [...rows, { id: `new-${crypto.randomUUID()}`, product_id: current?.id ?? '', option_label: 'Option', option_value: '', sku: null, price_override: null, attributes: {}, is_active: true, sort_order: rows.length, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }]) }
   function updateVariant(id: string, patch: Partial<AdminVariant>) { setVariantRows((rows) => rows.map((row) => row.id === id ? { ...row, ...patch } : row)) }
   async function removeVariant(row: AdminVariant) { if (row.id.startsWith('new-')) { setVariantRows((rows) => rows.filter((item) => item.id !== row.id)); return } if (!window.confirm('Delete this variant?')) return; try { await deleteProductVariant(row.id); setVariantRows((rows) => rows.filter((item) => item.id !== row.id)); push('Variant deleted.') } catch (cause) { push(cause instanceof Error ? cause.message : 'Variant could not be deleted.', 'error') } }
@@ -110,29 +120,67 @@ function ProductEditor({ product, onSaved, onCancel }: { product?: AdminProduct;
 }
 
 function Categories() {
-  const { push } = useToast(); const [items, setItems] = useState<AdminCategory[]>([]); const [error, setError] = useState<string | null>(null); const [showForm, setShowForm] = useState(false)
-  const load = () => void listAdminCategories().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Categories could not be loaded.'))
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminCategory[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [editing, setEditing] = useState<AdminCategory | null>(null)
+  const [showForm, setShowForm] = useState(false)
+  const [image, setImage] = useState<File | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const load = () => { setLoading(true); setError(null); void listAdminCategories().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Categories could not be loaded.')).finally(() => setLoading(false)) }
   useEffect(load, [])
-  async function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); try { await saveCategory({ name: String(data.get('name') ?? ''), slug: String(data.get('slug') ?? ''), description: String(data.get('description') ?? ''), is_active: data.get('is_active') === 'on', sort_order: Number(data.get('sort_order') ?? 0), parent_id: null, eyebrow: null, image_url: null, seo_title: null, seo_description: null }); push('Category saved.'); setShowForm(false); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Category could not be saved.', 'error') } }
-  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Collections and taxonomy</p><h2>Categories</h2></div><button className="admin-button" onClick={() => setShowForm(true)}><Plus size={16} /> New category</button></div>{showForm && <form className="admin-form admin-panel" onSubmit={(event) => void submit(event)}><div className="admin-form-grid"><label>Name<input name="name" required /></label><label>Slug<input name="slug" required /></label><label>Sort order<input name="sort_order" type="number" min="0" defaultValue="0" /></label><label className="admin-check"><input name="is_active" type="checkbox" /> Visible on storefront</label><label className="admin-form-span"><span>Description</span><textarea name="description" rows={3} /></label></div><div className="admin-form-actions"><button type="button" className="admin-button admin-button--outline" onClick={() => setShowForm(false)}>Cancel</button><button className="admin-button">Create category</button></div></form>}{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No categories yet" detail="Create your first live category, then assign products to it." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Name</th><th>Slug</th><th>Visibility</th><th>Order</th><th>Updated</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.description || 'No description'}</small></td><td>{item.slug}</td><td><em className={statusClass(item.is_active ? 'active' : 'hidden')}>{item.is_active ? 'active' : 'hidden'}</em></td><td>{item.sort_order}</td><td>{formatDate(item.updated_at)}</td></tr>)}</tbody></table></div>}</section>
+  useEffect(() => { if (!image) { setImagePreview(null); return } const url = URL.createObjectURL(image); setImagePreview(url); return () => URL.revokeObjectURL(url) }, [image])
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const data = new FormData(event.currentTarget)
+    setSaving(true)
+    try {
+      const imageUrl = image ? await uploadPublicMedia(image, 'categories') : editing?.image_url ?? null
+      await saveCategory({ name: String(data.get('name') ?? '').trim(), slug: String(data.get('slug') ?? '').trim(), description: String(data.get('description') ?? ''), is_active: data.get('is_active') === 'on', sort_order: Number(data.get('sort_order') ?? 0), parent_id: editing?.parent_id ?? null, eyebrow: editing?.eyebrow ?? null, image_url: imageUrl, seo_title: editing?.seo_title ?? null, seo_description: editing?.seo_description ?? null }, editing?.id)
+      push(editing ? 'Category updated.' : 'Category created.')
+      setShowForm(false); setEditing(null); setImage(null); load()
+    } catch (cause) { push(cause instanceof Error ? cause.message : 'Category could not be saved.', 'error') }
+    finally { setSaving(false) }
+  }
+  function startEdit(item: AdminCategory) { setEditing(item); setImage(null); setShowForm(true) }
+  return <section className="admin-content">
+    <div className="admin-page-heading"><div><p className="admin-kicker">Collections and taxonomy</p><h2>Categories</h2></div><button className="admin-button" onClick={() => { setEditing(null); setImage(null); setShowForm(true) }}><Plus size={16} /> New category</button></div>
+    {showForm && <form key={editing?.id ?? 'new-category'} className="admin-form admin-panel" onSubmit={(event) => void submit(event)}><div className="admin-form-grid">
+      <label>Name<input name="name" required defaultValue={editing?.name ?? ''} /></label><label>Slug<input name="slug" required defaultValue={editing?.slug ?? ''} /></label><label>Sort order<input name="sort_order" type="number" min="0" defaultValue={editing?.sort_order ?? 0} /></label><label className="admin-check"><input name="is_active" type="checkbox" defaultChecked={editing?.is_active ?? false} /> Visible on storefront</label><label className="admin-form-span"><span>Description</span><textarea name="description" rows={3} defaultValue={editing?.description ?? ''} /></label>
+      <label className="admin-form-span"><span>Category image (JPG, PNG, WebP or AVIF; max 8 MB)</span><input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (file.size > 8 * 1024 * 1024 || !['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))) { push('Choose a JPG, PNG, WebP or AVIF image up to 8 MB.', 'error'); event.target.value = ''; setImage(null); return } setImage(file) }} /></label>
+      {(imagePreview || editing?.image_url) && <img src={imagePreview ?? editing?.image_url ?? ''} alt="Category image preview" style={{ maxWidth: 220, maxHeight: 140, objectFit: 'cover', borderRadius: 8 }} />}
+    </div><div className="admin-form-actions"><button type="button" className="admin-button admin-button--outline" onClick={() => { setShowForm(false); setEditing(null); setImage(null) }}>Cancel</button><button className="admin-button" disabled={saving}>{saving ? 'Saving…' : editing ? 'Save category' : 'Create category'}</button></div></form>}
+    {error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No categories yet" detail="Create your first live category, then assign products to it." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Name</th><th>Slug</th><th>Visibility</th><th>Order</th><th>Updated</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.name}</strong><small>{item.description || 'No description'}</small></td><td>{item.slug}</td><td><em className={statusClass(item.is_active ? 'active' : 'hidden')}>{item.is_active ? 'active' : 'hidden'}</em></td><td>{item.sort_order}</td><td>{formatDate(item.updated_at)}</td><td><button type="button" className="admin-small-button" onClick={() => startEdit(item)}><Edit2 size={14} /> Edit</button></td></tr>)}</tbody></table></div>}
+  </section>
 }
 
 function Orders() {
   const { push } = useToast(); const [items, setItems] = useState<AdminOrder[]>([]); const [selected, setSelected] = useState<AdminOrder | null>(null); const [search, setSearch] = useState(''); const [status, setStatus] = useState('all'); const [error, setError] = useState<string | null>(null)
   const load = () => void listAdminOrders(search, status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Orders could not be loaded.'))
   useEffect(load, [search, status])
-  async function changeStatus(order: AdminOrder, next: Database['public']['Tables']['orders']['Row']['order_status']) { try { await updateOrder(order.id, { order_status: next }); push(`Order ${order.order_number} updated.`); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'The database rejected this transition.', 'error') } }
-  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Fulfilment workflow</p><h2>Orders</h2></div></div><div className="admin-toolbar"><label className="admin-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order or customer" /></label><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{['pending','confirmed','processing','shipped','delivered','cancelled'].map((value) => <option key={value}>{value}</option>)}</select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No orders found" detail="Orders are read from the live orders table. New cash-on-delivery orders appear here immediately after a buyer completes checkout." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Next action</th></tr></thead><tbody>{items.map((order) => <tr key={order.id}><td><button className="admin-link-button" onClick={() => setSelected(order)}><strong>{order.order_number}</strong><small>{formatDate(order.created_at)}</small></button></td><td>{order.customer_name}<small>{order.customer_phone}</small></td><td>{formatMoney(order.total)}</td><td><em className={statusClass(order.payment_status)}>{order.payment_status}</em></td><td><em className={statusClass(order.order_status)}>{order.order_status}</em></td><td>{order.order_status === 'pending' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'confirmed')}>Confirm</button>}{order.order_status === 'confirmed' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'processing')}>Process</button>}{order.order_status === 'processing' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'shipped')}>Ship</button>}{order.order_status === 'shipped' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'delivered')}>Deliver</button>}</td></tr>)}</tbody></table></div>}{selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} />}</section>
+  async function changeStatus(order: AdminOrder, next: Database['public']['Tables']['orders']['Row']['order_status']) { if (next === 'cancelled' && !window.confirm(`Cancel order ${order.order_number}?`)) return; try { await updateOrder(order.id, next); push(`Order ${order.order_number} updated.`); setSelected((current) => current?.id === order.id ? { ...current, order_status: next } : current); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'The database rejected this transition.', 'error') } }
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Fulfilment workflow</p><h2>Orders</h2></div></div><div className="admin-toolbar"><label className="admin-search"><Search size={16} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search order or customer" /></label><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option>{['pending','confirmed','processing','shipped','delivered','cancelled'].map((value) => <option key={value}>{value}</option>)}</select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No orders found" detail="Orders are read from the live orders table. New cash-on-delivery orders appear here immediately after a buyer completes checkout." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Payment</th><th>Status</th><th>Next action</th></tr></thead><tbody>{items.map((order) => <tr key={order.id}><td><button className="admin-link-button" onClick={() => setSelected(order)}><strong>{order.order_number}</strong><small>{formatDate(order.created_at)}</small></button></td><td>{order.customer_name}<small>{order.customer_phone}</small></td><td>{formatMoney(order.total)}</td><td><em className={statusClass(order.payment_status)}>{order.payment_status}</em></td><td><em className={statusClass(order.order_status)}>{order.order_status}</em></td><td><div className="admin-action-row">{order.order_status === 'pending' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'confirmed')}>Confirm</button>}{order.order_status === 'confirmed' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'processing')}>Process</button>}{order.order_status === 'processing' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'shipped')}>Ship</button>}{order.order_status === 'shipped' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'delivered')}>Deliver</button>}{['pending','confirmed','processing'].includes(order.order_status) && <button className="admin-small-button admin-small-button--danger" onClick={() => void changeStatus(order, 'cancelled')}>Cancel</button>}</div></td></tr>)}</tbody></table></div>}{selected && <OrderDrawer order={selected} onClose={() => setSelected(null)} onStatusChange={(next) => void changeStatus(selected, next)} />}</section>
 }
 
-function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => void }) {
+function OrderDrawer({ order, onClose, onStatusChange }: { order: AdminOrder; onClose: () => void; onStatusChange: (next: Database['public']['Tables']['orders']['Row']['order_status']) => void }) {
   const { push } = useToast()
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof getAdminOrderDetail>> | null>(null)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [detailLoading, setDetailLoading] = useState(true)
+  const [detailAttempt, setDetailAttempt] = useState(0)
   const [note, setNote] = useState('')
 
   useEffect(() => {
-    void getAdminOrderDetail(order.id).then(setDetail).catch(() => undefined)
-  }, [order.id])
+    let active = true
+    setDetailLoading(true)
+    setDetailError(null)
+    void getAdminOrderDetail(order.id).then((result) => { if (active) setDetail(result) }).catch((cause: unknown) => {
+      if (active) setDetailError(cause instanceof Error ? cause.message : 'Order details could not be loaded.')
+    }).finally(() => { if (active) setDetailLoading(false) })
+    return () => { active = false }
+  }, [order.id, detailAttempt])
 
   async function saveNote() {
     if (!note.trim()) return
@@ -142,6 +190,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
       push('Note added.')
       const next = await getAdminOrderDetail(order.id)
       setDetail(next)
+      setDetailError(null)
     } catch (cause) {
       push(cause instanceof Error ? cause.message : 'Note could not be added.')
     }
@@ -167,13 +216,14 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
           <strong>{order.customer_name}</strong>
           <span>{order.customer_email ?? 'No email'} · {order.customer_phone}</span>
           <span>
-            {String(
-              order.shipping_address_snapshot && typeof order.shipping_address_snapshot === 'object'
-                ? (order.shipping_address_snapshot as Record<string, unknown>).address_line_1 ?? 'Address snapshot available'
-                : 'Address snapshot available'
-            )}
+            {order.shipping_address_snapshot && typeof order.shipping_address_snapshot === 'object' ? Object.values(order.shipping_address_snapshot as Record<string, unknown>).filter((value): value is string => typeof value === 'string' && value.trim().length > 0).join(', ') || 'Address snapshot available' : 'Address snapshot available'}
           </span>
+          <span>Placed {formatDate(order.created_at)} · Updated {formatDate(order.updated_at)}</span>
+          <span>Subtotal {formatMoney(order.subtotal)} · Delivery {formatMoney(order.delivery_fee)} · Discount {formatMoney(order.discount_amount)} · Total {formatMoney(order.total)}</span>
+          {order.customer_note && <span>Customer note: {order.customer_note}</span>}
         </div>
+
+        <div className="admin-drawer-section"><h4>Order status · {order.payment_method.toUpperCase()} / {order.payment_status}</h4><label htmlFor="admin-order-status">Update to an allowed next status</label><select id="admin-order-status" value={order.order_status} onChange={(event) => onStatusChange(event.target.value as AdminOrder['order_status'])}><option value={order.order_status}>{order.order_status}</option>{(order.order_status === 'pending' ? ['confirmed','cancelled'] : order.order_status === 'confirmed' ? ['processing','cancelled'] : order.order_status === 'processing' ? ['shipped','cancelled'] : order.order_status === 'shipped' ? ['delivered'] : []).map((value) => <option key={value} value={value}>{value}</option>)}</select><small>COD collection is tracked separately from delivery status.</small></div>
 
         <div className="admin-drawer-section">
           <h4>Delivery Location & GPS Pin</h4>
@@ -183,6 +233,7 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
                 <strong>Coordinates:</strong> {order.delivery_lat}, {order.delivery_lng}
               </p>
               {order.delivery_location_name && <p><strong>Location Name:</strong> {order.delivery_location_name}</p>}
+              <iframe className="admin-order-map" title="Delivery location map" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(`${order.delivery_lng! - 0.008},${Math.max(-85, order.delivery_lat! - 0.006)},${order.delivery_lng! + 0.008},${Math.min(85, order.delivery_lat! + 0.006)}`)}&layer=mapnik&marker=${order.delivery_lat}%2C${order.delivery_lng}`} />
               <a
                 href={mapsUrl!}
                 target="_blank"
@@ -200,16 +251,20 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
 
         <div className="admin-drawer-section">
           <h4>Items</h4>
-          {detail?.items.map((item) => (
+          {detail?.warnings.map((warning) => <p className="admin-callout" role="status" key={warning}>{warning}</p>)}
+          {detailLoading ? <Loading /> : detailError ? <div className="admin-state admin-state--error" role="alert"><span>{detailError}</span><button type="button" className="admin-button admin-button--outline" onClick={() => setDetailAttempt((value) => value + 1)}>Retry</button></div> : detail?.items.map((item) => (
             <div className="admin-list-row" key={item.id}>
               <span>
-                {item.product_name_snapshot}
-                <small>Qty {item.quantity}</small>
+                {item.product_name_snapshot} · {item.seller_name_snapshot ?? 'Marketplace seller'}
+                <small>Qty {item.quantity} · {item.vendor_fulfillment_status} {item.tracking_number ? `· ${item.tracking_number}` : ''}</small>
               </span>
               <b>{formatMoney(item.line_total)}</b>
             </div>
-          )) ?? <Loading />}
+          ))}
+          {!detailLoading && !detailError && detail?.items.length === 0 && <p className="admin-copy">This order has no item records.</p>}
         </div>
+
+        <div className="admin-drawer-section"><h4>Status history</h4>{!detail?.history.length ? <p className="admin-copy">No recorded status changes are available.</p> : detail.history.map((entry) => <p className="admin-note" key={entry.id}><strong>{entry.action}</strong> · {entry.entity}<small>{formatDate(entry.created_at)}</small></p>)}</div>
 
         <div className="admin-drawer-section">
           <h4>Admin notes</h4>
@@ -229,7 +284,30 @@ function OrderDrawer({ order, onClose }: { order: AdminOrder; onClose: () => voi
   )
 }
 
-function Inventory() { const { push } = useToast(); const [items, setItems] = useState<AdminInventory[]>([]); const [error, setError] = useState<string | null>(null); const load = () => void listAdminInventory().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Inventory could not be loaded.')); useEffect(load, []); async function change(item: AdminInventory) { const value = window.prompt(`Set quantity for ${item.product_name}`, String(item.quantity)); if (value === null) return; const note = window.prompt('Why is this quantity changing?', 'Admin adjustment'); if (note === null) return; try { await adjustInventory(item.id, Number(value), note); push('Inventory updated.'); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Inventory update failed.', 'error') } } return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Stock control</p><h2>Inventory</h2></div></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No inventory records" detail="Inventory records are created when products are configured for tracking." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Variant</th><th>Quantity</th><th>Threshold</th><th>Updated</th><th /></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.product_name}</strong></td><td>{item.variant_name ?? 'Base product'}</td><td><strong className={item.low_stock_threshold !== null && item.quantity <= item.low_stock_threshold ? 'admin-low-stock' : ''}>{item.quantity}</strong></td><td>{item.low_stock_threshold ?? '—'}</td><td>{formatDate(item.updated_at)}</td><td><button className="admin-small-button" onClick={() => void change(item)}>Adjust</button></td></tr>)}</tbody></table></div>}</section> }
+function Inventory() {
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminInventory[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [quantity, setQuantity] = useState('')
+  const [note, setNote] = useState('')
+  const [saving, setSaving] = useState(false)
+  const load = () => { setLoading(true); setError(null); void listAdminInventory().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Inventory could not be loaded.')).finally(() => setLoading(false)) }
+  useEffect(load, [])
+  function startAdjust(item: AdminInventory) { setEditingId(item.id); setQuantity(String(item.quantity)); setNote('') }
+  async function saveAdjustment(event: FormEvent<HTMLFormElement>, item: AdminInventory) {
+    event.preventDefault()
+    const value = Number(quantity)
+    if (!Number.isInteger(value) || value < 0) { setError('Quantity must be a whole number of zero or more.'); return }
+    if (!note.trim()) { setError('Add a reason for this stock adjustment.'); return }
+    setSaving(true); setError(null)
+    try { await adjustInventory(item.id, value, note.trim()); setEditingId(null); setNote(''); push('Inventory updated.'); load() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Inventory update failed.') }
+    finally { setSaving(false) }
+  }
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Stock control</p><h2>Inventory</h2></div><button type="button" className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No inventory records" detail="Inventory records are created when products are configured for tracking." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Product</th><th>Variant</th><th>Quantity</th><th>Threshold</th><th>Updated</th><th>Adjust</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.product_name}</strong></td><td>{item.variant_name ?? 'Base product'}</td><td><strong className={item.low_stock_threshold !== null && item.quantity <= item.low_stock_threshold ? 'admin-low-stock' : ''}>{item.quantity}</strong></td><td>{item.low_stock_threshold ?? '—'}</td><td>{formatDate(item.updated_at)}</td><td>{editingId === item.id ? <form className="admin-inline-adjust" onSubmit={(event) => void saveAdjustment(event, item)}><label><span className="sr-only">New quantity</span><input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label><span className="sr-only">Adjustment reason</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reason" required /></label><button type="submit" className="admin-small-button" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button><button type="button" className="admin-small-button" onClick={() => setEditingId(null)}>Cancel</button></form> : <button type="button" className="admin-small-button" onClick={() => startAdjust(item)}>Adjust</button>}</td></tr>)}</tbody></table></div>}</section>
+}
 
 function Sellers() { const { push } = useToast(); const [items, setItems] = useState<AdminSeller[]>([]); const [status, setStatus] = useState('pending'); const [error, setError] = useState<string | null>(null); const load = () => void listSellerApplications(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Seller applications could not be loaded.')); useEffect(load, [status]); async function review(item: AdminSeller, next: AdminSeller['status']) { const reason = next === 'rejected' || next === 'suspended' ? window.prompt('Record a review reason', item.rejection_reason ?? '') : undefined; if ((next === 'rejected' || next === 'suspended') && reason === null) return; try { await reviewSellerApplication(item.id, next, reason ?? undefined); push(`Seller ${next}.`); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Seller review failed.', 'error') } } return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Marketplace governance</p><h2>Seller applications</h2></div><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option><option value="all">All</option></select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No seller applications" detail="New seller applications will appear here after the reviewed marketplace migration is applied." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Shop</th><th>Contact</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.shop_name}</strong><small>{item.slug}<br />{item.description || 'No description'}</small></td><td>{item.contact_email ?? '-'}{item.phone && <small>{item.phone}</small>}<SellerDocumentLink path={item.document_path} /></td><td><em className={statusClass(item.status)}>{item.status}</em></td><td>{formatDate(item.created_at)}</td><td><div className="admin-action-row">{item.status === 'pending' && <><button className="admin-small-button" onClick={() => void review(item, 'approved')}>Approve</button><button className="admin-small-button admin-small-button--danger" onClick={() => void review(item, 'rejected')}>Reject</button></>}{item.status === 'approved' && <button className="admin-small-button admin-small-button--danger" onClick={() => void review(item, 'suspended')}>Suspend</button>}{item.status === 'suspended' && <button className="admin-small-button" onClick={() => void review(item, 'approved')}>Reactivate</button>}</div></td></tr>)}</tbody></table></div>}</section> }
 
@@ -563,6 +641,16 @@ function Heroes() {
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingHero, setEditingHero] = useState<AdminHero | null>(null)
+  const [heroFile, setHeroFile] = useState<File | null>(null)
+  const [heroPreview, setHeroPreview] = useState<string | null>(null)
+  const [savingHero, setSavingHero] = useState(false)
+
+  useEffect(() => {
+    if (!heroFile) { setHeroPreview(null); return }
+    const preview = URL.createObjectURL(heroFile)
+    setHeroPreview(preview)
+    return () => URL.revokeObjectURL(preview)
+  }, [heroFile])
 
   const load = () => {
     setLoading(true)
@@ -578,25 +666,38 @@ function Heroes() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
+    setSavingHero(true)
     try {
+      let imageUrl = editingHero?.image_url ?? ""
+      if (heroFile) {
+        imageUrl = await uploadPublicMedia(heroFile, "heroes")
+      } else if (String(data.get("image_url") ?? "").trim()) {
+        imageUrl = String(data.get("image_url") ?? "").trim()
+      }
+      if (!imageUrl) throw new Error('Choose a hero image or enter an image URL.')
+      if (!/^https:\/\//i.test(imageUrl) && !imageUrl.startsWith('/')) throw new Error('Use an HTTPS image URL.')
+
       await saveAdminHero(
         {
-          title: String(data.get('title') ?? '').trim(),
-          subtitle: String(data.get('subtitle') ?? '').trim() || null,
-          cta_text: String(data.get('cta_text') ?? '').trim() || null,
-          cta_destination: String(data.get('cta_destination') ?? '').trim() || null,
-          image_url: String(data.get('image_url') ?? '').trim(),
-          display_order: Number(data.get('display_order') ?? 0),
-          status: String(data.get('status') ?? 'published') as AdminHero['status'],
+          title: String(data.get("title") ?? "").trim(),
+          subtitle: String(data.get("subtitle") ?? "").trim() || null,
+          cta_text: String(data.get("cta_text") ?? "").trim() || null,
+          cta_destination: String(data.get("cta_destination") ?? "").trim() || null,
+          image_url: imageUrl,
+          display_order: Number(data.get("display_order") ?? 0),
+          status: String(data.get("status") ?? "published") as AdminHero["status"],
         },
         editingHero?.id
       )
-      push('Hero slide saved.')
+      push("Hero slide saved.")
       setShowForm(false)
       setEditingHero(null)
+      setHeroFile(null)
       load()
     } catch (cause) {
-      push(cause instanceof Error ? cause.message : 'Hero slide could not be saved.', 'error')
+      push(cause instanceof Error ? cause.message : "Hero slide could not be saved.", "error")
+    } finally {
+      setSavingHero(false)
     }
   }
 
@@ -622,6 +723,7 @@ function Heroes() {
           className="admin-button"
           onClick={() => {
             setEditingHero(null)
+            setHeroFile(null)
             setShowForm(true)
           }}
         >
@@ -639,6 +741,7 @@ function Heroes() {
               onClick={() => {
                 setShowForm(false)
                 setEditingHero(null)
+                setHeroFile(null)
               }}
             >
               <X size={18} />
@@ -658,8 +761,11 @@ function Heroes() {
               CTA destination <input name="cta_destination" defaultValue={editingHero?.cta_destination ?? ''} placeholder="e.g. /shop" />
             </label>
             <label className="admin-form-span">
-              <span>Image URL</span>
-              <input name="image_url" defaultValue={editingHero?.image_url ?? ''} required placeholder="https://..." />
+              <span>Hero image (JPG, PNG, WebP or AVIF; max 8 MB)</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file && (file.size > 8 * 1024 * 1024 || !['image/jpeg','image/png','image/webp','image/avif'].includes(file.type))) { push('Choose a JPG, PNG, WebP or AVIF image up to 8 MB.', 'error'); event.target.value = ''; setHeroFile(null); return } setHeroFile(file) }} />
+              <small>Upload a file or use an existing hosted image URL.</small>
+              <input name="image_url" defaultValue={editingHero?.image_url ?? ''} placeholder="https://..." />
+              {(heroPreview || editingHero?.image_url) && <img src={heroPreview ?? editingHero?.image_url ?? ''} alt="Hero image preview" style={{ display: 'block', maxWidth: 420, maxHeight: 180, objectFit: 'cover', borderRadius: 8, marginTop: 10 }} />}
             </label>
             <label>
               Display order <input name="display_order" type="number" defaultValue={editingHero?.display_order ?? 0} />
@@ -680,11 +786,12 @@ function Heroes() {
               onClick={() => {
                 setShowForm(false)
                 setEditingHero(null)
+                setHeroFile(null)
               }}
             >
               Cancel
             </button>
-            <button className="admin-button">Save hero slide</button>
+            <button className="admin-button" disabled={savingHero}>{savingHero ? "Saving…" : "Save hero slide"}</button>
           </div>
         </form>
       )}
