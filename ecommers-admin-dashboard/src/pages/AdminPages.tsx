@@ -463,6 +463,8 @@ function Promotions() {
   const [error, setError] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingPromo, setEditingPromo] = useState<AdminPromotion | null>(null)
+  const [promoImages, setPromoImages] = useState<string[]>([])
+  const [uploadingPromoImages, setUploadingPromoImages] = useState(false)
 
   const load = () => {
     setLoading(true)
@@ -483,7 +485,8 @@ function Promotions() {
         {
           title: String(data.get('title') ?? '').trim(),
           description: String(data.get('description') ?? '').trim() || null,
-          banner_image_url: String(data.get('banner_image_url') ?? '').trim() || null,
+          banner_image_url: promoImages[0] ?? null,
+          banner_image_urls: promoImages,
           cta_text: String(data.get('cta_text') ?? '').trim() || null,
           cta_destination: String(data.get('cta_destination') ?? '').trim() || null,
           is_platform_wide: data.get('is_platform_wide') === 'on',
@@ -526,6 +529,7 @@ function Promotions() {
           className="admin-button"
           onClick={() => {
             setEditingPromo(null)
+            setPromoImages([])
             setShowForm(true)
           }}
         >
@@ -543,6 +547,7 @@ function Promotions() {
               onClick={() => {
                 setShowForm(false)
                 setEditingPromo(null)
+                setPromoImages([])
               }}
             >
               <X size={18} />
@@ -583,8 +588,39 @@ function Promotions() {
               </select>
             </label>
             <label className="admin-form-span">
-              <span>Banner Image URL</span>
-              <input name="banner_image_url" defaultValue={editingPromo?.banner_image_url ?? ''} placeholder="https://..." />
+              <span>Upload banner images</span>
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif"
+                multiple
+                disabled={uploadingPromoImages}
+                onChange={(event) => {
+                  const input = event.currentTarget
+                  const files = Array.from(input.files ?? [])
+                  if (!files.length) return
+                  setUploadingPromoImages(true)
+                  void Promise.all(files.map((file) => uploadPublicMedia(file, 'promotions')))
+                    .then((urls) => setPromoImages((current) => [...current, ...urls]))
+                    .catch((cause) => push(cause instanceof Error ? cause.message : 'Banner images could not be uploaded.', 'error'))
+                    .finally(() => {
+                      setUploadingPromoImages(false)
+                      input.value = ''
+                    })
+                }}
+              />
+              <small>Choose one or more JPG, PNG, WebP or AVIF images, up to 8 MB each.</small>
+              {uploadingPromoImages && <small>Uploading images…</small>}
+              {promoImages.length > 0 && (
+                <div className="admin-promotion-image-list">
+                  {promoImages.map((url, index) => (
+                    <div className="admin-promotion-image" key={`${url}-${index}`}>
+                      <img src={url} alt={`Campaign banner ${index + 1}`} />
+                      <span>Image {index + 1}</span>
+                      <button type="button" className="admin-icon-button" aria-label={`Remove image ${index + 1}`} onClick={() => setPromoImages((current) => current.filter((_, imageIndex) => imageIndex !== index))}><X size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </label>
             <label className="admin-form-span">
               <span>CTA text & link</span>
@@ -610,7 +646,7 @@ function Promotions() {
             >
               Cancel
             </button>
-            <button className="admin-button">Save campaign</button>
+            <button className="admin-button" disabled={uploadingPromoImages}>{uploadingPromoImages ? 'Uploading…' : 'Save campaign'}</button>
           </div>
         </form>
       )}
@@ -652,7 +688,7 @@ function Promotions() {
                   </td>
                   <td>
                     <div className="admin-action-row">
-                      <button className="admin-icon-button" title="Edit" onClick={() => setEditingPromo(item)}>
+                      <button className="admin-icon-button" title="Edit" onClick={() => { setPromoImages(item.banner_image_urls?.length ? item.banner_image_urls : item.banner_image_url ? [item.banner_image_url] : []); setEditingPromo(item) }}>
                         <Edit2 size={15} />
                       </button>
                       <button className="admin-icon-button" title="Delete" onClick={() => void removePromo(item.id)}>

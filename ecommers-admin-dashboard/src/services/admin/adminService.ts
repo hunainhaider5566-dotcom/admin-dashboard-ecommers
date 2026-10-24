@@ -37,6 +37,7 @@ export interface AdminPromotion {
   title: string
   description: string | null
   banner_image_url: string | null
+  banner_image_urls: string[]
   cta_text: string | null
   cta_destination: string | null
   is_platform_wide: boolean
