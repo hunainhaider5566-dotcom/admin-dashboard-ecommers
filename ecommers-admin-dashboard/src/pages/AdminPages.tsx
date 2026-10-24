@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { addOrderNote, adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminProducts, listAdminPromotions, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, updateAdminStoreSettings, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminVariant } from '../services/admin/adminService'
+import { addOrderNote, adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminProducts, listAdminPromotions, listAdminSupportTickets, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, updateAdminStoreSettings, updateAdminSupportTicket, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminSupportTicket, type AdminVariant } from '../services/admin/adminService'
 import type { Database } from '../types/database'
 import '../admin.css'
 
@@ -17,6 +17,7 @@ const nav = [
   { to: '/admin/inventory', label: 'Inventory', icon: Boxes },
   { to: '/admin/sellers', label: 'Sellers', icon: Store },
   { to: '/admin/cases', label: 'Cases', icon: MessageSquare },
+  { to: '/admin/tickets', label: 'Support tickets', icon: MessageSquare },
   { to: '/admin/customers', label: 'Customers', icon: Users },
   { to: '/admin/settings', label: 'Store settings', icon: Settings },
   { to: '/admin/audit', label: 'Audit log', icon: ShieldAlert },
@@ -89,6 +90,7 @@ function AdminContent({ path }: { path: string }) {
   if (path === '/admin/inventory') return <Inventory />
   if (path === '/admin/sellers') return <Sellers />
   if (path === '/admin/cases') return <Cases />
+  if (path === '/admin/tickets') return <SupportTickets />
   if (path === '/admin/customers') return <Customers />
   if (path === '/admin/settings') return <StoreSettings />
   return <Audit />
@@ -332,6 +334,20 @@ function Sellers() { const { push } = useToast(); const [items, setItems] = useS
 
 function Cases() { const { push } = useToast(); const [items, setItems] = useState<AdminCase[]>([]); const [status, setStatus] = useState('all'); const [error, setError] = useState<string | null>(null); const load = () => void listMarketplaceCases(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Marketplace cases could not be loaded.')); useEffect(load, [status]); async function decide(item: AdminCase, next: AdminCase['status']) { const decision = window.prompt('Record the administrative decision', item.admin_decision ?? ''); if (!decision) return; try { await decideMarketplaceCase(item.id, next, decision); push('Case decision recorded.'); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Case decision failed.', 'error') } } return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Returns, refunds and complaints</p><h2>Marketplace cases</h2></div><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="open">Open</option><option value="seller_responded">Seller responded</option><option value="under_review">Under review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="resolved">Resolved</option></select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No cases" detail="Buyer returns, refund requests and complaints will appear here once the marketplace workflow is enabled." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Type</th><th>Reason</th><th>Status</th><th>Opened</th><th>Decision</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><em className={statusClass(item.case_type)}>{item.case_type}</em></td><td>{item.reason}</td><td><em className={statusClass(item.status)}>{item.status}</em></td><td>{formatDate(item.created_at)}</td><td>{!['resolved', 'rejected'].includes(item.status) && <div className="admin-action-row"><button className="admin-small-button" onClick={() => void decide(item, 'approved')}>Approve</button><button className="admin-small-button" onClick={() => void decide(item, 'rejected')}>Reject</button></div>}{item.admin_decision && <small>{item.admin_decision}</small>}</td></tr>)}</tbody></table></div>}</section> }
 
+function SupportTickets() {
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminSupportTicket[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const load = () => { setError(null); void listAdminSupportTickets().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Support tickets could not be loaded.')) }
+  useEffect(load, [])
+  async function save(item: AdminSupportTicket, form: HTMLFormElement) {
+    const data = new FormData(form)
+    try { await updateAdminSupportTicket(item.id, String(data.get('status')) as AdminSupportTicket['status'], String(data.get('admin_response') ?? '')); push('Support ticket updated.'); load() }
+    catch (cause) { push(cause instanceof Error ? cause.message : 'Ticket update failed.', 'error') }
+  }
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Seller support inbox</p><h2>Support tickets</h2></div><button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No support tickets" detail="Vendor support requests will appear here when submitted." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Subject</th><th>Request</th><th>Status</th><th>Marketplace reply</th><th>Action</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.subject}</strong><small>{formatDate(item.created_at)}</small></td><td>{item.message}</td><td><select name="status" defaultValue={item.status} form={`support-ticket-${item.id}`}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option></select></td><td><textarea name="admin_response" form={`support-ticket-${item.id}`} defaultValue={item.admin_response ?? ''} rows={3} /></td><td><form id={`support-ticket-${item.id}`} onSubmit={(event) => { event.preventDefault(); void save(item, event.currentTarget) }}><button className="admin-small-button">Save reply</button></form></td></tr>)}</tbody></table></div>}</section>
+}
+
 function Customers() { const [items, setItems] = useState<AdminCustomer[]>([]); const [error, setError] = useState<string | null>(null); const load = () => void listAdminCustomers().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Customers could not be loaded.')); useEffect(load, []); return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Authorized customer records</p><h2>Customers</h2></div></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No customer profiles" detail="Customer profiles will appear here after real accounts are created through Supabase Auth." /> : <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Customer</th><th>Email</th><th>Phone</th><th>Orders</th><th>Lifetime value</th><th>Joined</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="admin-product-cell"><span className="admin-avatar">{(item.full_name ?? 'C').slice(0, 1).toUpperCase()}</span><span><strong>{item.full_name ?? 'Unnamed customer'}</strong><small>{item.email ?? 'No email on file'}</small></span></div></td><td>{item.email ?? '-'}</td><td>{item.phone ?? '-'}</td><td>{item.order_count}</td><td>{formatMoney(item.lifetime_value)}</td><td>{formatDate(item.created_at)}</td></tr>)}</tbody></table></div>}</section> }
 
 function SellerDocumentLink({ path }: { path: string | null }) {
@@ -546,6 +562,7 @@ function Promotions() {
               Display position
               <select name="display_position" defaultValue={editingPromo?.display_position ?? 'hero_banner'}>
                 <option value="hero_banner">Hero Banner</option>
+                <option value="seller_banner">Become a Seller Banner</option>
                 <option value="top_promo">Top Promo Bar</option>
                 <option value="category_feature">Category Feature</option>
                 <option value="product_strip">Product Strip</option>

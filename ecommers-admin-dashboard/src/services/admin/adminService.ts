@@ -13,6 +13,7 @@ export type AdminSeller = Database['public']['Tables']['seller_profiles']['Row']
 export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
 export type AdminStoreSettings = Database['public']['Tables']['store_settings']['Row']
 export type AdminNotification = Database['public']['Tables']['notifications']['Row']
+export type AdminSupportTicket = Database['public']['Tables']['support_tickets']['Row']
 
 export interface AdminHero {
   id: string
@@ -194,7 +195,7 @@ async function publishProductImages(productId: string) {
     const upload = await client.storage.from('product-images').upload(image.storage_path, file, { upsert: true, contentType: file.type || undefined })
     assertError(upload.error)
     const url = client.storage.from('product-images').getPublicUrl(image.storage_path).data.publicUrl
-    const saved = await client.from('product_images').update({ image_url: url }).eq('id', image.id)
+    const saved = await client.from('product_images').update({ image_url: url, storage_path: null }).eq('id', image.id)
     if (saved.error) {
       await client.storage.from('product-images').remove([image.storage_path])
       throw new Error(saved.error.message)
@@ -257,7 +258,7 @@ export async function uploadAdditionalProductImage(productId: string, file: File
     throw new Error(imagesError.message)
   }
   const sortOrder = (images?.[0]?.sort_order ?? -1) + 1
-  const result = await client.from('product_images').insert({ product_id: productId, storage_path: path, image_url: draft ? null : client.storage.from(bucket).getPublicUrl(path).data.publicUrl, alt_text: file.name, sort_order: sortOrder, is_primary: !images?.length })
+  const result = await client.from('product_images').insert({ product_id: productId, storage_path: draft ? path : null, image_url: draft ? null : client.storage.from(bucket).getPublicUrl(path).data.publicUrl, alt_text: file.name, sort_order: sortOrder, is_primary: !images?.length })
   if (result.error) {
     await client.storage.from(bucket).remove([path])
     throw new Error(result.error.message)
@@ -408,6 +409,17 @@ export async function listMarketplaceCases(status = 'all'): Promise<AdminCase[]>
 
 export async function decideMarketplaceCase(id: string, status: Database['public']['Tables']['marketplace_cases']['Row']['status'], decision: string) {
   const { error } = await getSupabase().rpc('admin_decide_marketplace_case', { p_case_id: id, p_status: status, p_decision: decision })
+  assertError(error)
+}
+
+export async function listAdminSupportTickets(): Promise<AdminSupportTicket[]> {
+  const { data, error } = await getSupabase().from('support_tickets').select('*').order('created_at', { ascending: false }).limit(250)
+  assertError(error)
+  return data ?? []
+}
+
+export async function updateAdminSupportTicket(id: string, status: AdminSupportTicket['status'], admin_response: string) {
+  const { error } = await getSupabase().from('support_tickets').update({ status, admin_response: admin_response.trim() || null, updated_at: new Date().toISOString() }).eq('id', id)
   assertError(error)
 }
 
