@@ -33,7 +33,7 @@ type PaymentTransactionRow = { id: string; order_id: string; provider: string; p
 type AdminOrderNoteRow = { id: string; order_id: string; created_by: string; note: string; created_at: string }
 type NotificationRow = { id: string; user_id: string; kind: NotificationKind; title: string; body: string; related_order_id: string | null; read_at: string | null; created_at: string }
 type AdminAuditLogRow = { id: string; actor_id: string | null; action: 'INSERT' | 'UPDATE' | 'DELETE'; entity: string; entity_id: string | null; details: Json; created_at: string }
-type SellerProfileRow = { id: string; user_id: string; shop_name: string; slug: string; description: string; contact_email: string | null; phone: string | null; document_path: string | null; status: SellerStatus; rejection_reason: string | null; reviewed_by: string | null; reviewed_at: string | null; created_at: string; updated_at: string }
+type SellerProfileRow = { id: string; user_id: string; shop_name: string; slug: string; description: string; contact_email: string | null; phone: string | null; document_path: string | null; shop_image_url: string | null; status: SellerStatus; rejection_reason: string | null; reviewed_by: string | null; reviewed_at: string | null; created_at: string; updated_at: string }
 type HomepageHeroRow = { id: string; title: string; subtitle: string | null; cta_text: string | null; cta_destination: string | null; image_url: string; mobile_image_url: string | null; image_alt_text: string | null; status: 'draft' | 'published' | 'archived'; display_order: number; start_date: string | null; end_date: string | null; created_at: string; updated_at: string }
 type PromotionRow = { id: string; title: string; description: string | null; banner_image_url: string | null; cta_text: string | null; cta_destination: string | null; is_platform_wide: boolean; seller_id: string | null; status: 'draft' | 'pending_review' | 'approved' | 'rejected' | 'hidden' | 'archived'; rejection_reason: string | null; display_position: string; priority: number; coupon_code: string | null; discount_percent: number | null; created_at: string; updated_at: string }
 type StoreSettingsRow = { id: string; store_name: string; support_email: string | null; support_phone: string | null; support_whatsapp: string | null; delivery_fee: number; cod_enabled: boolean; return_window_days: number; updated_at: string }
@@ -83,7 +83,7 @@ export interface Database {
       admin_list_products: { Args: { p_search?: string }; Returns: ProductRow[] }
       admin_customer_summary: { Args: Record<string, never>; Returns: { id: string; full_name: string | null; phone: string | null; avatar_url: string | null; email: string | null; order_count: number; lifetime_value: number; created_at: string; updated_at: string }[] }
       admin_update_store_settings: { Args: { p_settings: Json }; Returns: StoreSettingsRow }
-      list_public_shops: { Args: Record<string, never>; Returns: { id: string; shop_name: string; slug: string; description: string; created_at: string; product_count: number }[] }
+      list_public_shops: { Args: Record<string, never>; Returns: { id: string; shop_name: string; slug: string; description: string; created_at: string; product_count: number; shop_image_url: string | null }[] }
       seller_resubmit_application: { Args: Record<string, never>; Returns: SellerProfileRow }
     }
     Enums: {

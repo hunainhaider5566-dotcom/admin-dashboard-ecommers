@@ -12,6 +12,7 @@ export type AdminVariant = Database['public']['Tables']['product_variants']['Row
 export type AdminSeller = Database['public']['Tables']['seller_profiles']['Row']
 export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
 export type AdminStoreSettings = Database['public']['Tables']['store_settings']['Row']
+export type AdminNotification = Database['public']['Tables']['notifications']['Row']
 
 export interface AdminHero {
   id: string
@@ -79,23 +80,31 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
   for (const row of inventoryResult.data ?? []) {
     inventoryTotals.set(row.product_id, (inventoryTotals.get(row.product_id) ?? 0) + (row.quantity ?? 0))
   }
-  const imagesByProduct = new Map<string, { image_url: string | null; is_primary: boolean | null }[]>()
+  const imagesByProduct = new Map<string, { image_url: string | null; storage_path: string | null; is_primary: boolean | null }[]>()
   for (const image of imagesResult.data ?? []) {
     const list = imagesByProduct.get(image.product_id) ?? []
     list.push(image)
     imagesByProduct.set(image.product_id, list)
   }
 
-  return rows.map((row) => {
+  return Promise.all(rows.map(async (row) => {
     const images = imagesByProduct.get(row.id) ?? []
     const primary = images.find((image) => image.is_primary) ?? images[0]
+    let imageUrl = primary?.image_url ?? null
+    if (!imageUrl && primary?.storage_path) {
+      if (row.publication_status === 'published') imageUrl = client.storage.from('product-images').getPublicUrl(primary.storage_path).data.publicUrl
+      else {
+        const signed = await client.storage.from('product-drafts').createSignedUrl(primary.storage_path, 600)
+        imageUrl = signed.data?.signedUrl ?? null
+      }
+    }
     return {
       ...row,
       category: row.category_id ? { name: categoryNames.get(row.category_id) ?? 'Unassigned' } : null,
       inventory: inventoryTotals.get(row.id) ?? 0,
-      image_url: primary?.image_url ?? null,
+      image_url: imageUrl,
     }
-  })
+  }))
 }
 
 export async function listAdminCategories(): Promise<AdminCategory[]> {
@@ -168,8 +177,30 @@ export async function deleteProductVariant(id: string) {
 }
 
 export async function updateProductStatus(id: string, publication_status: Database['public']['Tables']['products']['Row']['publication_status']) {
+  if (publication_status === 'published') await publishProductImages(id)
   const { error } = await getSupabase().from('products').update({ publication_status }).eq('id', id)
   assertError(error)
+}
+
+async function publishProductImages(productId: string) {
+  const client = getSupabase()
+  const { data: images, error } = await client.from('product_images').select('id, storage_path, image_url').eq('product_id', productId).order('sort_order')
+  assertError(error)
+  for (const image of images ?? []) {
+    if (!image.storage_path || image.image_url) continue
+    const { data: file, error: downloadError } = await client.storage.from('product-drafts').download(image.storage_path)
+    assertError(downloadError)
+    if (!file) throw new Error('A draft product image could not be opened for publication.')
+    const upload = await client.storage.from('product-images').upload(image.storage_path, file, { upsert: true, contentType: file.type || undefined })
+    assertError(upload.error)
+    const url = client.storage.from('product-images').getPublicUrl(image.storage_path).data.publicUrl
+    const saved = await client.from('product_images').update({ image_url: url }).eq('id', image.id)
+    if (saved.error) {
+      await client.storage.from('product-images').remove([image.storage_path])
+      throw new Error(saved.error.message)
+    }
+    await client.storage.from('product-drafts').remove([image.storage_path])
+  }
 }
 
 export async function moderateProduct(id: string, status: Database['public']['Tables']['products']['Row']['moderation_status'], reason?: string) {
@@ -210,6 +241,52 @@ export async function uploadProductImage(productId: string, file: File, draft = 
     const previousBucket = previousDraft ? 'product-drafts' : 'product-images'
     await client.storage.from(previousBucket).remove([currentPrimary.storage_path])
   }
+}
+
+export async function uploadAdditionalProductImage(productId: string, file: File, draft = true) {
+  if (file.size > 10 * 1024 * 1024) throw new Error('Product images must be 10 MB or smaller.')
+  if (!['image/jpeg', 'image/png', 'image/webp', 'image/avif'].includes(file.type)) throw new Error('Choose a JPG, PNG, WebP or AVIF product image.')
+  const client = getSupabase()
+  const bucket = draft ? 'product-drafts' : 'product-images'
+  const path = `${productId}/${crypto.randomUUID()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, '-')}`
+  const upload = await client.storage.from(bucket).upload(path, file, { upsert: false, contentType: file.type })
+  assertError(upload.error)
+  const { data: images, error: imagesError } = await client.from('product_images').select('sort_order, is_primary').eq('product_id', productId).order('sort_order', { ascending: false }).limit(100)
+  if (imagesError) {
+    await client.storage.from(bucket).remove([path])
+    throw new Error(imagesError.message)
+  }
+  const sortOrder = (images?.[0]?.sort_order ?? -1) + 1
+  const result = await client.from('product_images').insert({ product_id: productId, storage_path: path, image_url: draft ? null : client.storage.from(bucket).getPublicUrl(path).data.publicUrl, alt_text: file.name, sort_order: sortOrder, is_primary: !images?.length })
+  if (result.error) {
+    await client.storage.from(bucket).remove([path])
+    throw new Error(result.error.message)
+  }
+}
+
+export async function listAdminNotifications(): Promise<AdminNotification[]> {
+  const client = getSupabase()
+  const user = (await client.auth.getUser()).data.user
+  if (!user) return []
+  const { data, error } = await client.from('notifications').select('id, user_id, kind, title, body, related_order_id, read_at, created_at').eq('user_id', user.id).order('created_at', { ascending: false }).limit(25)
+  assertError(error)
+  return (data ?? []) as AdminNotification[]
+}
+
+export async function markAdminNotificationRead(id: string) {
+  const client = getSupabase()
+  const user = (await client.auth.getUser()).data.user
+  if (!user) throw new Error('Sign in is required to update notifications.')
+  const { error } = await client.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id).eq('user_id', user.id)
+  assertError(error)
+}
+
+export async function markAllAdminNotificationsRead() {
+  const client = getSupabase()
+  const user = (await client.auth.getUser()).data.user
+  if (!user) throw new Error('Sign in is required to update notifications.')
+  const { error } = await client.from('notifications').update({ read_at: new Date().toISOString() }).eq('user_id', user.id).is('read_at', null)
+  assertError(error)
 }
 
 export async function listAdminOrders(search = '', status = 'all'): Promise<AdminOrder[]> {
