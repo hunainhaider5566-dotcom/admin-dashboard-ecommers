@@ -291,13 +291,19 @@ export async function markAllAdminNotificationsRead() {
   assertError(error)
 }
 
-export async function listAdminOrders(search = '', status = 'all'): Promise<AdminOrder[]> {
-  let query = getSupabase().from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, created_at, updated_at').order('created_at', { ascending: false }).limit(200)
-  if (search.trim()) query = query.or(`order_number.ilike.%${search.trim()}%,customer_name.ilike.%${search.trim()}%,customer_phone.ilike.%${search.trim()}%`)
+export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc'): Promise<{ items: AdminOrder[]; count: number }> {
+  const [column, direction] = sort.split('.')
+  const allowedSorts = new Set(['created_at', 'updated_at', 'total', 'order_number', 'order_status'])
+  const sortColumn = allowedSorts.has(column) ? column : 'created_at'
+  const ascending = direction === 'asc'
+  const from = Math.max(0, page) * Math.max(1, pageSize)
+  let query = getSupabase().from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, created_at, updated_at', { count: 'exact' }).order(sortColumn, { ascending }).range(from, from + Math.max(1, pageSize) - 1)
+  const term = search.trim().replace(/[%,()]/g, ' ')
+  if (term) query = query.or(`order_number.ilike.%${term}%,customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%`)
   if (status !== 'all') query = query.eq('order_status', status as Database['public']['Tables']['orders']['Row']['order_status'])
-  const { data, error } = await query
+  const { data, error, count } = await query
   assertError(error)
-  return (data ?? []) as AdminOrder[]
+  return { items: (data ?? []) as AdminOrder[], count: count ?? 0 }
 }
 
 export async function getAdminOrderDetail(id: string) {
@@ -324,7 +330,7 @@ export async function addOrderNote(order_id: string, note: string) {
 }
 
 export async function listAdminInventory(): Promise<AdminInventory[]> {
-  const { data, error } = await getSupabase().from('product_inventory').select('id, product_id, variant_id, quantity, low_stock_threshold, updated_at, products(name), product_variants(option_label, option_value)').order('updated_at', { ascending: false }).limit(300)
+  const { data, error } = await getSupabase().from('product_inventory').select('id, product_id, variant_id, quantity, low_stock_threshold, updated_at, products(name), product_variants(option_label, option_value)').order('updated_at', { ascending: false }).limit(100)
   assertError(error)
   return (data ?? []).map((row) => {
     const product = Array.isArray(row.products) ? row.products[0] : row.products
@@ -414,7 +420,7 @@ export async function decideMarketplaceCase(id: string, status: Database['public
 }
 
 export async function listAdminSupportTickets(): Promise<AdminSupportTicket[]> {
-  const { data, error } = await getSupabase().from('support_tickets').select('*').order('created_at', { ascending: false }).limit(250)
+  const { data, error } = await getSupabase().from('support_tickets').select('*').order('updated_at', { ascending: false }).limit(100)
   assertError(error)
   return data ?? []
 }
@@ -425,7 +431,7 @@ export async function updateAdminSupportTicket(id: string, status: AdminSupportT
 }
 
 export async function listAdminHeroes(): Promise<AdminHero[]> {
-  const { data, error } = await getSupabase().from('homepage_heroes').select('*').order('display_order', { ascending: true })
+  const { data, error } = await getSupabase().from('homepage_heroes').select('*').order('created_at', { ascending: false }).limit(100)
   assertError(error)
   return (data ?? []) as AdminHero[]
 }
@@ -445,7 +451,7 @@ export async function deleteAdminHero(id: string) {
 }
 
 export async function listAdminPromotions(): Promise<AdminPromotion[]> {
-  const { data, error } = await getSupabase().from('promotions').select('*').order('priority', { ascending: false })
+  const { data, error } = await getSupabase().from('promotions').select('*').order('created_at', { ascending: false }).limit(100)
   assertError(error)
   return (data ?? []) as AdminPromotion[]
 }
