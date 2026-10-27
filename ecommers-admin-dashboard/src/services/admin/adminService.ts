@@ -8,6 +8,7 @@ export type AdminOrder = Database['public']['Tables']['orders']['Row']
 export type AdminOrderItem = Database['public']['Tables']['order_items']['Row']
 export type AdminInventory = Database['public']['Tables']['product_inventory']['Row'] & { product_name: string; variant_name: string | null }
 export type AdminCustomer = Database['public']['Functions']['admin_customer_summary']['Returns'][number]
+export type AdminAccountSuspension = Database['public']['Functions']['admin_account_suspensions']['Returns'][number]
 export type AdminVariant = Database['public']['Tables']['product_variants']['Row']
 export type AdminSeller = Database['public']['Tables']['seller_profiles']['Row']
 export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
@@ -349,6 +350,21 @@ export async function listAdminCustomers(): Promise<AdminCustomer[]> {
   const { data, error } = await getSupabase().rpc('admin_customer_summary')
   assertError(error)
   return (data ?? []) as AdminCustomer[]
+}
+
+export async function listAdminAccountSuspensions(): Promise<AdminAccountSuspension[]> {
+  const { data, error } = await getSupabase().rpc('admin_account_suspensions')
+  assertError(error)
+  return data ?? []
+}
+
+export async function setAdminAccountSuspension(userId: string, action: 'suspend' | 'restore', reason?: string) {
+  const { data, error } = await getSupabase().functions.invoke('admin-account-suspension', { body: { user_id: userId, action, reason } })
+  if (error) {
+    const message = typeof data === 'object' && data && 'error' in data ? String(data.error) : error.message
+    throw new Error(message || 'Account status could not be changed.')
+  }
+  return data as { ok: boolean; user_id: string; suspended: boolean }
 }
 
 export async function getAdminStoreSettings(): Promise<AdminStoreSettings> {

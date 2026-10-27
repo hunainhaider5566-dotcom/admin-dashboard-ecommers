@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
-import { adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminProducts, listAdminPromotions, listAdminSupportTickets, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, updateAdminStoreSettings, updateAdminSupportTicket, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminSupportTicket, type AdminVariant } from '../services/admin/adminService'
+import { adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminAccountSuspensions, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminProducts, listAdminPromotions, listAdminSupportTickets, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, setAdminAccountSuspension, updateAdminStoreSettings, updateAdminSupportTicket, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminAccountSuspension, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminSupportTicket, type AdminVariant } from '../services/admin/adminService'
 import type { Database } from '../types/database'
 import '../admin.css'
 
@@ -333,12 +333,40 @@ function SupportTickets() {
   return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Seller support inbox</p><h2>Support tickets</h2></div><button className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No support tickets" detail="Vendor support requests will appear here when submitted." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Subject</th><th>Request</th><th>Status</th><th>Marketplace reply</th><th>Action</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.subject}</strong><small>{formatDate(item.created_at)}</small></td><td>{item.message}</td><td><select name="status" defaultValue={item.status} form={`support-ticket-${item.id}`}><option value="open">Open</option><option value="in_progress">In progress</option><option value="resolved">Resolved</option></select></td><td><textarea name="admin_response" form={`support-ticket-${item.id}`} defaultValue={item.admin_response ?? ''} rows={3} /></td><td><form id={`support-ticket-${item.id}`} onSubmit={(event) => { event.preventDefault(); void save(item, event.currentTarget) }}><button className="admin-small-button">Save reply</button></form></td></tr>)}</tbody></table></div>}</section>
 }
 
-function Customers() { const [items, setItems] = useState<AdminCustomer[]>([]); const [error, setError] = useState<string | null>(null); const load = () => void listAdminCustomers().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Customers could not be loaded.')); useEffect(load, []); useAutoRefresh(load); return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Authorized customer records</p><h2>Customers</h2></div></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No customer profiles" detail="Customer profiles will appear here after real accounts are created through Supabase Auth." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Customer</th><th>Email</th><th>Phone</th><th>Orders</th><th>Lifetime value</th><th>Joined</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><div className="admin-product-cell"><span className="admin-avatar">{(item.full_name ?? 'C').slice(0, 1).toUpperCase()}</span><span><strong>{item.full_name ?? 'Unnamed customer'}</strong><small>{item.email ?? 'No email on file'}</small></span></div></td><td>{item.email ?? '-'}</td><td>{item.phone ?? '-'}</td><td>{item.order_count}</td><td>{formatMoney(item.lifetime_value)}</td><td>{formatDate(item.created_at)}</td></tr>)}</tbody></table></div>}</section> }
+function Customers() {
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminCustomer[]>([])
+  const [suspensions, setSuspensions] = useState<Map<string, AdminAccountSuspension>>(new Map())
+  const [target, setTarget] = useState<AdminCustomer | null>(null)
+  const [restoreTarget, setRestoreTarget] = useState<AdminCustomer | null>(null)
+  const [reason, setReason] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const load = () => { setError(null); void Promise.all([listAdminCustomers(), listAdminAccountSuspensions()]).then(([customers, rows]) => { setItems(customers); setSuspensions(new Map(rows.map((row) => [row.user_id, row]))) }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Customers could not be loaded.')) }
+  useEffect(load, []); useAutoRefresh(load)
+  async function suspend(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (!target || reason.trim().length < 5) return
+    setSaving(true)
+    try { await setAdminAccountSuspension(target.id, 'suspend', reason.trim()); push('Account suspended. Customer and vendor access for this login are both blocked.'); setTarget(null); setReason(''); load() }
+    catch (cause) { push(cause instanceof Error ? cause.message : 'Account could not be suspended.', 'error') }
+    finally { setSaving(false) }
+  }
+  async function restore() {
+    if (!restoreTarget) return
+    setSaving(true)
+    try { await setAdminAccountSuspension(restoreTarget.id, 'restore'); push('Account access restored.'); setRestoreTarget(null); load() }
+    catch (cause) { push(cause instanceof Error ? cause.message : 'Account could not be restored.', 'error') }
+    finally { setSaving(false) }
+  }
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Authorized customer records</p><h2>Customers</h2><p className="admin-copy">Suspend the shared sign-in to block both customer and vendor access for the same person.</p></div><button type="button" className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No customer profiles" detail="Customer profiles will appear here after real accounts are created through Supabase Auth." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Customer</th><th>Email</th><th>Phone</th><th>Orders</th><th>Lifetime value</th><th>Joined</th><th>Account access</th><th>Action</th></tr></thead><tbody>{items.map((item) => { const suspension = suspensions.get(item.id); return <tr key={item.id}><td><div className="admin-product-cell"><span className="admin-avatar">{(item.full_name ?? 'C').slice(0, 1).toUpperCase()}</span><span><strong>{item.full_name ?? 'Unnamed customer'}</strong><small>{item.email ?? 'No email on file'}</small></span></div></td><td>{item.email ?? '—'}</td><td>{item.phone ?? '—'}</td><td>{item.order_count}</td><td>{formatMoney(item.lifetime_value)}</td><td>{formatDate(item.created_at)}</td><td>{suspension ? <><em className={statusClass('suspended')}>Suspended</em><small title={suspension.reason}>{suspension.reason}</small></> : <em className={statusClass('active')}>Active</em>}</td><td>{suspension ? <button type="button" className="admin-small-button" onClick={() => setRestoreTarget(item)}>Restore access</button> : <button type="button" className="admin-small-button admin-small-button--danger" onClick={() => { setReason(''); setTarget(item) }}><ShieldAlert size={14} /> Suspend</button>}</td></tr> })}</tbody></table></div>}
+    {target && <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setTarget(null) }}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="suspend-title"><div className="admin-panel-heading"><div><p className="admin-kicker">Block account access</p><h3 id="suspend-title">Suspend {target.full_name || target.email || 'this account'}?</h3></div><button type="button" className="admin-icon-button" aria-label="Close suspension dialog" disabled={saving} onClick={() => setTarget(null)}><X size={17} /></button></div><p className="admin-copy">This blocks sign-in for this user, including both customer and vendor features. Record a reason for the admin log and account notice.</p><form onSubmit={(event) => void suspend(event)}><label>Reason<textarea value={reason} onChange={(event) => setReason(event.target.value)} minLength={5} maxLength={1000} rows={4} required placeholder="Explain why access is being suspended…" /></label><div className="admin-form-actions"><button type="button" className="admin-button admin-button--outline" disabled={saving} onClick={() => setTarget(null)}>Cancel</button><button className="admin-button admin-button--danger" disabled={saving || reason.trim().length < 5}>{saving ? 'Suspending…' : 'Confirm suspension'}</button></div></form></section></div>}
+    {restoreTarget && <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setRestoreTarget(null) }}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="restore-title"><div className="admin-panel-heading"><div><p className="admin-kicker">Restore sign-in</p><h3 id="restore-title">Restore {restoreTarget.full_name || restoreTarget.email || 'this account'}?</h3></div><button type="button" className="admin-icon-button" aria-label="Close restore dialog" disabled={saving} onClick={() => setRestoreTarget(null)}><X size={17} /></button></div><p className="admin-copy">This restores access to the shared account and its customer and vendor features.</p><div className="admin-form-actions"><button type="button" className="admin-button admin-button--outline" disabled={saving} onClick={() => setRestoreTarget(null)}>Cancel</button><button type="button" className="admin-button" disabled={saving} onClick={() => void restore()}>{saving ? 'Restoring…' : 'Restore access'}</button></div></section></div>}
+  </section>
+}
 
 function SellerDocumentLink({ path }: { path: string | null }) {
   const { push } = useToast()
   const [opening, setOpening] = useState(false)
-
   async function open() {
     if (!path) return
     setOpening(true)
@@ -348,11 +376,8 @@ function SellerDocumentLink({ path }: { path: string | null }) {
       window.open(url, '_blank', 'noopener,noreferrer')
     } catch (cause) {
       push(cause instanceof Error ? cause.message : 'The verification document could not be opened.', 'error')
-    } finally {
-      setOpening(false)
-    }
+    } finally { setOpening(false) }
   }
-
   if (!path) return <small>No verification document uploaded</small>
   return <button className="admin-small-button" onClick={() => void open()} disabled={opening}>{opening ? 'Opening…' : 'View document'}</button>
 }
@@ -362,81 +387,24 @@ function StoreSettings() {
   const [settings, setSettings] = useState<AdminStoreSettings | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-
-  const load = () => {
-    setError(null)
-    void getAdminStoreSettings()
-      .then(setSettings)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Store settings could not be loaded.'))
-  }
+  const load = () => { setError(null); void getAdminStoreSettings().then(setSettings).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Store settings could not be loaded.')) }
   useEffect(load, [])
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
     const deliveryFee = Number(data.get('delivery_fee'))
     const returnWindowDays = Number(data.get('return_window_days'))
-    if (!Number.isFinite(deliveryFee) || deliveryFee < 0) {
-      push('Delivery fee must be zero or more.', 'error')
-      return
-    }
-    if (!Number.isInteger(returnWindowDays) || returnWindowDays < 0) {
-      push('Return window must be a whole number of days.', 'error')
-      return
-    }
+    if (!Number.isFinite(deliveryFee) || deliveryFee < 0) { push('Delivery fee must be zero or more.', 'error'); return }
+    if (!Number.isInteger(returnWindowDays) || returnWindowDays < 0) { push('Return window must be a whole number of days.', 'error'); return }
     setSaving(true)
     try {
-      const next = await updateAdminStoreSettings({
-        store_name: String(data.get('store_name') ?? '').trim(),
-        support_email: String(data.get('support_email') ?? '').trim() || null,
-        support_phone: String(data.get('support_phone') ?? '').trim() || null,
-        support_whatsapp: String(data.get('support_whatsapp') ?? '').trim() || null,
-        delivery_fee: deliveryFee,
-        cod_enabled: data.get('cod_enabled') === 'on',
-        return_window_days: returnWindowDays,
-      })
-      setSettings(next)
-      push('Store settings saved. Storefront visitors will see the updated values on their next visit.')
-    } catch (cause) {
-      push(cause instanceof Error ? cause.message : 'Store settings could not be saved.', 'error')
-    } finally {
-      setSaving(false)
-    }
+      const next = await updateAdminStoreSettings({ store_name: String(data.get('store_name') ?? '').trim(), support_email: String(data.get('support_email') ?? '').trim() || null, support_phone: String(data.get('support_phone') ?? '').trim() || null, support_whatsapp: String(data.get('support_whatsapp') ?? '').trim() || null, delivery_fee: deliveryFee, cod_enabled: data.get('cod_enabled') === 'on', return_window_days: returnWindowDays })
+      setSettings(next); push('Store settings saved. Storefront visitors will see the updated values on their next visit.')
+    } catch (cause) { push(cause instanceof Error ? cause.message : 'Store settings could not be saved.', 'error') } finally { setSaving(false) }
   }
-
   if (error) return <ErrorState message={error} retry={load} />
   if (!settings) return <Loading />
-
-  return (
-    <section className="admin-content">
-      <div className="admin-page-heading">
-        <div>
-          <p className="admin-kicker">Storefront defaults and contact details</p>
-          <h2>Store settings</h2>
-        </div>
-      </div>
-      <form className="admin-form admin-panel" onSubmit={(event) => void submit(event)}>
-        <div className="admin-panel-heading">
-          <div>
-            <h3>Public store configuration</h3>
-            <p className="admin-copy">These values are read by the storefront checkout, footer and help pages. Delivery fee and cash-on-delivery availability are enforced again by the database when an order is placed.</p>
-          </div>
-        </div>
-        <div className="admin-form-grid">
-          <label className="admin-form-span">Store name<input name="store_name" defaultValue={settings.store_name} maxLength={160} required /></label>
-          <label>Support email<input name="support_email" type="email" defaultValue={settings.support_email ?? ''} placeholder="support@example.com" /></label>
-          <label>Support phone<input name="support_phone" defaultValue={settings.support_phone ?? ''} placeholder="+92 300 0000000" /></label>
-          <label>Support WhatsApp<input name="support_whatsapp" defaultValue={settings.support_whatsapp ?? ''} placeholder="+92 300 0000000" /></label>
-          <label>Delivery fee (PKR)<input name="delivery_fee" type="number" min="0" step="0.01" defaultValue={settings.delivery_fee} required /></label>
-          <label>Return window (days)<input name="return_window_days" type="number" min="0" step="1" defaultValue={settings.return_window_days} required /></label>
-          <label className="admin-check"><input name="cod_enabled" type="checkbox" defaultChecked={settings.cod_enabled} /> Cash on delivery available</label>
-        </div>
-        <div className="admin-form-actions">
-          <button className="admin-button" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button>
-        </div>
-      </form>
-    </section>
-  )
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Storefront defaults and contact details</p><h2>Store settings</h2></div></div><form className="admin-form admin-panel" onSubmit={(event) => void submit(event)}><div className="admin-panel-heading"><div><h3>Public store configuration</h3><p className="admin-copy">These values are read by the storefront checkout, footer and help pages. Delivery fee and cash-on-delivery availability are enforced again by the database when an order is placed.</p></div></div><div className="admin-form-grid"><label className="admin-form-span">Store name<input name="store_name" defaultValue={settings.store_name} maxLength={160} required /></label><label>Support email<input name="support_email" type="email" defaultValue={settings.support_email ?? ''} placeholder="support@example.com" /></label><label>Support phone<input name="support_phone" defaultValue={settings.support_phone ?? ''} placeholder="+92 300 0000000" /></label><label>Support WhatsApp<input name="support_whatsapp" defaultValue={settings.support_whatsapp ?? ''} placeholder="+92 300 0000000" /></label><label>Delivery fee (PKR)<input name="delivery_fee" type="number" min="0" step="0.01" defaultValue={settings.delivery_fee} required /></label><label>Return window (days)<input name="return_window_days" type="number" min="0" step="1" defaultValue={settings.return_window_days} required /></label><label className="admin-check"><input name="cod_enabled" type="checkbox" defaultChecked={settings.cod_enabled} /> Cash on delivery available</label></div><div className="admin-form-actions"><button className="admin-button" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button></div></form></section>
 }
 
 function Audit() { const [items, setItems] = useState<Array<{ id: string; action: string; entity: string; entity_id: string | null; created_at: string }>>([]); const [error, setError] = useState<string | null>(null); const load = () => void listAuditLogs().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Audit log could not be loaded.')); useEffect(load, []); useAutoRefresh(load); return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Sensitive changes</p><h2>Audit log</h2></div></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No audit events" detail="Product, category, inventory, note, and order status changes will be recorded by database triggers." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Action</th><th>Entity</th><th>Entity ID</th><th>When</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><em className={statusClass(item.action.toLowerCase())}>{item.action}</em></td><td>{item.entity}</td><td className="admin-mono">{item.entity_id ?? '—'}</td><td>{formatDate(item.created_at)}</td></tr>)}</tbody></table></div>}</section> }

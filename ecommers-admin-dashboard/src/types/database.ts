@@ -84,6 +84,7 @@ export interface Database {
       admin_moderate_product: { Args: { p_product_id: string; p_status: ModerationStatus; p_reason?: string | null }; Returns: ProductRow }
       admin_list_products: { Args: { p_search?: string }; Returns: ProductRow[] }
       admin_customer_summary: { Args: Record<string, never>; Returns: { id: string; full_name: string | null; phone: string | null; avatar_url: string | null; email: string | null; order_count: number; lifetime_value: number; created_at: string; updated_at: string }[] }
+      admin_account_suspensions: { Args: Record<string, never>; Returns: { user_id: string; reason: string; suspended_at: string; suspended_by: string }[] }
       admin_update_store_settings: { Args: { p_settings: Json }; Returns: StoreSettingsRow }
       list_public_shops: { Args: Record<string, never>; Returns: { id: string; shop_name: string; slug: string; description: string; created_at: string; product_count: number; shop_image_url: string | null }[] }
       seller_resubmit_application: { Args: Record<string, never>; Returns: SellerProfileRow }
