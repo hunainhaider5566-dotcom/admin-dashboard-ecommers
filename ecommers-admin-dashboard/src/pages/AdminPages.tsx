@@ -920,6 +920,7 @@ function ManualOrders() {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [formOpen, setFormOpen] = useState(false)
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null)
   const [customerName, setCustomerName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -948,6 +949,52 @@ function ManualOrders() {
     })()
   }
   const loadProducts = () => { setProductsLoading(true); void listAdminProducts('').then(setProducts).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Products could not be loaded.')).finally(() => setProductsLoading(false)) }
+  const editManualOrder = async (row: Record<string, unknown>) => {
+    const id = String(row.id ?? '')
+    if (!id) { push('Order ID missing; this record cannot be edited.', 'error'); return }
+    setError(null)
+    try {
+      const client = getSupabase() as any
+      const [orderResult, itemResult] = await Promise.all([
+        client.from('manual_orders').select('*').eq('id', id).single(),
+        client.from('manual_order_items').select('*').eq('manual_order_id', id).order('created_at')
+      ])
+      if (orderResult.error) throw new Error(orderResult.error.message)
+      if (itemResult.error) throw new Error(itemResult.error.message)
+      const order = orderResult.data as Record<string, unknown>
+      setEditingOrderId(id)
+      setCustomerName(String(order.customer_name ?? ''))
+      setPhone(String(order.customer_phone ?? ''))
+      setEmail(String(order.customer_email ?? ''))
+      setAddress(String(order.shipping_address ?? ''))
+      setNote(String(order.customer_note ?? ''))
+      setReference(String(order.external_reference ?? ''))
+      setSource(String(order.source ?? 'other'))
+      setPaymentMethod(String(order.payment_method ?? 'cod'))
+      setOrderStatus(String(order.order_status ?? 'pending'))
+      setDeliveryFee(String(order.delivery_fee ?? 0))
+      setDiscount(String(order.discount_amount ?? 0))
+      setPaidAmount(String(order.paid_amount ?? 0))
+      const savedItems = (itemResult.data ?? []) as Record<string, unknown>[]
+      setFormItems(savedItems.length ? savedItems.map(item => {
+        const productId = String(item.product_id ?? '')
+        const productExists = products.some(product => product.id === productId)
+        return {
+          mode: productExists ? 'catalog' as const : 'custom' as const,
+          product_id: productExists ? productId : '',
+          seller_id: String(item.seller_id ?? ''),
+          product_name_snapshot: String(item.product_name_snapshot ?? ''),
+          quantity: Number(item.quantity ?? 1),
+          unit_price: Number(item.unit_price ?? 0),
+          seller_name_snapshot: String(item.seller_name_snapshot ?? ''),
+          sku_snapshot: String(item.sku_snapshot ?? '')
+        }
+      }) : [emptyItem()])
+      setFormOpen(true)
+    } catch (cause) {
+      push(cause instanceof Error ? cause.message : 'Manual order could not be loaded for editing.', 'error')
+    }
+  }
   const deleteManualOrder = async (row: Record<string, unknown>) => {
     const id = String(row.id ?? '')
     if (!id) { push('Order ID missing; this record cannot be removed.', 'error'); return }
@@ -984,7 +1031,7 @@ function ManualOrders() {
     try {
       const client = getSupabase() as any
       const { data, error: saveError } = await client.rpc('admin_save_manual_order', {
-        p_order_id: null,
+        p_order_id: editingOrderId,
         p_order: {
           source, customer_name: customerName, customer_phone: phone, customer_email: email,
           shipping_address: address, customer_note: note, external_reference: reference,
@@ -1019,7 +1066,7 @@ function ManualOrders() {
     </div>
     {error && <ErrorState message={error} retry={() => { setError(null); loadProducts() }} />}
     {formOpen && <form className="admin-panel" onSubmit={saveOrder} style={{display:'grid',gap:18,marginBottom:20}}>
-      <div className="admin-panel-heading"><div><p className="admin-kicker">New order</p><h3>Customer and delivery details</h3></div></div>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">{editingOrderId ? 'Edit order' : 'New order'}</p><h3>Customer and delivery details</h3></div></div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:14}}>
         <label style={labelStyle}>Customer name *<input style={fieldStyle} required value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="Customer full name" /></label>
         <label style={labelStyle}>Phone / WhatsApp *<input style={fieldStyle} required value={phone} onChange={e=>setPhone(e.target.value)} placeholder="03xx xxxxxxx" /></label>
@@ -1054,14 +1101,14 @@ function ManualOrders() {
       <label style={labelStyle}>Order note (optional)<textarea style={fieldStyle} value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Customer instructions or internal note"/></label>
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',paddingTop:12,borderTop:'1px solid var(--admin-border, #d9dee7)'}}>
         <div><div style={{fontSize:13,color:'var(--admin-muted,#64748b)'}}>Subtotal: PKR {subtotal.toLocaleString('en-PK')} · Delivery: PKR {(Number(deliveryFee)||0).toLocaleString('en-PK')} · Discount: PKR {(Number(discount)||0).toLocaleString('en-PK')}</div><strong style={{fontSize:20}}>Total: PKR {total.toLocaleString('en-PK')}</strong></div>
-        <button className="admin-button" type="submit" disabled={saving}>{saving ? <><RefreshCw size={15} className="spin"/> Saving…</> : <><Check size={15}/> Save Manual Order</>}</button>
+        <button className="admin-button" type="submit" disabled={saving}>{saving ? <><RefreshCw size={15} className="spin"/> Saving…</> : <><Check size={15}/> {editingOrderId ? 'Update Manual Order' : 'Save Manual Order'}</>}</button>
       </div>
     </form>}
     <div className="admin-panel">
       <div className="admin-panel-heading"><div><p className="admin-kicker">Saved records</p><h3>{items.length} manual orders</h3></div></div>
       {loading ? <Loading /> : items.length === 0 ? <Empty title="No manual orders yet" detail="Add the first order using the “Add Manual Order” button above." /> :
         <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
-        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><Link className="admin-link-button" to={`/admin/manual-orders/${value(row,'id')}`}><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></Link></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td><td><button type="button" className="admin-small-button admin-small-button--danger" onClick={() => void deleteManualOrder(row)} title={`Remove ${value(row,'manual_order_number')}`}><Trash2 size={14}/> Delete</button></td></tr>)}</tbody></table></div>}
+        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><Link className="admin-link-button" to={`/admin/manual-orders/${value(row,'id')}`}><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></Link></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td><td><div className="admin-action-row"><button type="button" className="admin-small-button" onClick={() => void editManualOrder(row)} title={`Edit ${value(row,'manual_order_number')}`}><Edit2 size={14}/> Edit</button><button type="button" className="admin-small-button admin-small-button--danger" onClick={() => void deleteManualOrder(row)} title={`Remove ${value(row,'manual_order_number')}`}><Trash2 size={14}/> Delete</button></div></td></tr>)}</tbody></table></div>}
     </div>
   </section>
 }
