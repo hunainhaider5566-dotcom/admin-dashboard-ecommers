@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminAccountSuspensions, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminProducts, listAdminPromotions, listAdminSupportTickets, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, setAdminAccountSuspension, updateAdminStoreSettings, updateAdminSupportTicket, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminAccountSuspension, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminSupportInboxTicket, type AdminVariant } from '../services/admin/adminService'
 import type { Database } from '../types/database'
+import { getSupabase } from '../lib/supabase'
 import '../admin.css'
 
 const nav = [
@@ -14,6 +15,7 @@ const nav = [
   { to: '/admin/products', label: 'Products', icon: Package },
   { to: '/admin/categories', label: 'Categories', icon: FolderTree },
   { to: '/admin/orders', label: 'Orders', icon: ClipboardList },
+  { to: '/admin/manual-orders', label: 'Manual Orders', icon: Plus },
   { to: '/admin/inventory', label: 'Inventory', icon: Boxes },
   { to: '/admin/sellers', label: 'Sellers', icon: Store },
   { to: '/admin/cases', label: 'Cases', icon: MessageSquare },
@@ -115,6 +117,7 @@ function AdminContent({ path }: { path: string }) {
   if (path === '/admin/products') return <Products />
   if (path === '/admin/categories') return <Categories />
   if (path === '/admin/orders') return <Orders />
+  if (path === '/admin/manual-orders') return <ManualOrders />
   if (/^\/admin\/orders\/[^/]+$/.test(path)) return <OrderDetailPage orderId={path.split('/').pop()!} />
   if (path === '/admin/inventory') return <Inventory />
   if (path === '/admin/sellers') return <Sellers />
@@ -902,4 +905,61 @@ function Heroes() {
       )}
     </section>
   )
+}
+
+
+function ManualOrders() {
+  const [items, setItems] = useState<Record<string, unknown>[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const load = () => {
+    setLoading(true)
+    setError(null)
+    void (async () => {
+      try {
+        const client = getSupabase() as any
+        const { data, error: queryError } = await client
+          .from('manual_orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(200)
+        if (queryError) throw new Error(queryError.message)
+        setItems((data ?? []) as Record<string, unknown>[])
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Manual orders could not be loaded.')
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }
+  useEffect(() => { load() }, [])
+  const value = (row: Record<string, unknown>, ...keys: string[]) => {
+    for (const key of keys) {
+      const v = row[key]
+      if (v !== null && v !== undefined && v !== '') return String(v)
+    }
+    return '—'
+  }
+  return <section className="admin-content">
+    <div className="admin-page-heading">
+      <div><p className="admin-kicker">Phone, WhatsApp and walk-in sales</p><h2>Manual Orders</h2></div>
+      <button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button>
+    </div>
+    <div className="admin-panel">
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Saved records</p><h3>{items.length} manual orders</h3></div></div>
+      {loading ? <Loading /> : error ? <ErrorState message={error} retry={load} /> : items.length === 0
+        ? <Empty title="No manual orders yet" detail="Manual orders saved in the database will appear here." />
+        : <div className="admin-table-wrap"><table className="admin-table">
+          <thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th></tr></thead>
+          <tbody>{items.map((row, index) => <tr key={value(row, 'id') === '—' ? index : value(row, 'id')}>
+            <td><strong>{value(row, 'order_number', 'manual_order_number', 'id')}</strong></td>
+            <td>{value(row, 'customer_name', 'customer_full_name', 'name')}</td>
+            <td>{value(row, 'customer_phone', 'phone')}</td>
+            <td>{formatMoney(value(row, 'total', 'total_amount', 'grand_total'))}</td>
+            <td><em className={statusClass(value(row, 'status', 'order_status'))}>{value(row, 'status', 'order_status')}</em></td>
+            <td>{value(row, 'created_at')}</td>
+          </tr>)}</tbody>
+        </table></div>}
+    </div>
+  </section>
 }
