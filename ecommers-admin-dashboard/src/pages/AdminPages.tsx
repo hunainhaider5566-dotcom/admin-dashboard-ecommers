@@ -132,13 +132,98 @@ function AdminContent({ path }: { path: string }) {
 function Overview() {
   const [summary, setSummary] = useState<AdminSummary | null>(null)
   const [orders, setOrders] = useState<AdminOrder[]>([])
+  const [reportMode, setReportMode] = useState<'monthly' | 'yearly'>('monthly')
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
+  const [year, setYear] = useState(String(new Date().getFullYear()))
+  const [finance, setFinance] = useState<{ total: number; collected: number; outstanding: number; orderCount: number; cancelled: number; rows: { date: string; number: string; customer: string; source: string; status: string; paymentStatus: string; total: number; paid: number; outstanding: number }[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [reportLoading, setReportLoading] = useState(false)
   const load = () => { setError(null); void Promise.all([getAdminSummary(), listAdminOrders('', 'all', 0, 6)]).then(([nextSummary, nextOrders]) => { setSummary(nextSummary); setOrders(nextOrders.items) }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'The overview could not be loaded.')) }
   useEffect(load, [])
   useAutoRefresh(load)
-  if (error) return <ErrorState message={error} retry={load} />
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadFinance() {
+      setReportLoading(true)
+      setError(null)
+      try {
+        const client = getSupabase()
+        const fromDate = reportMode === 'monthly' ? new Date(`${month}-01T00:00:00`) : new Date(Number(year), 0, 1)
+        const toDate = reportMode === 'monthly' ? new Date(fromDate.getFullYear(), fromDate.getMonth() + 1, 1) : new Date(Number(year) + 1, 0, 1)
+        if (!Number.isFinite(fromDate.getTime()) || !Number.isFinite(toDate.getTime()) || fromDate.getFullYear() < 2000 || fromDate.getFullYear() > 2100) throw new Error('Choose a valid report period.')
+        const from = fromDate.toISOString()
+        const to = toDate.toISOString()
+        const [regularResult, manualResult] = await Promise.all([
+          client.from('orders').select('order_number, customer_name, total, order_status, payment_status, created_at').gte('created_at', from).lt('created_at', to).order('created_at', { ascending: true }).limit(5000),
+          client.from('manual_orders').select('manual_order_number, customer_name, total, paid_amount, order_status, payment_status, created_at').gte('created_at', from).lt('created_at', to).order('created_at', { ascending: true }).limit(5000),
+        ])
+        if (regularResult.error) throw new Error(regularResult.error.message)
+        if (manualResult.error) throw new Error(manualResult.error.message)
+        const regularRows = (regularResult.data ?? []).map((row) => {
+          const total = Number(row.total ?? 0)
+          const cancelledOrder = row.order_status === 'cancelled'
+          const paid = row.payment_status === 'paid' && !cancelledOrder ? total : 0
+          return { date: row.created_at, number: row.order_number, customer: row.customer_name, source: 'Online', status: row.order_status, paymentStatus: row.payment_status, total: cancelledOrder ? 0 : total, paid, outstanding: cancelledOrder ? 0 : Math.max(0, total - paid), cancelled: cancelledOrder }
+        })
+        const manualRows = (manualResult.data ?? []).map((row) => {
+          const total = Number(row.total ?? 0)
+          const cancelledOrder = row.order_status === 'cancelled'
+          const paid = cancelledOrder ? 0 : Math.min(total, Math.max(0, Number(row.paid_amount ?? 0)))
+          return { date: row.created_at, number: row.manual_order_number, customer: row.customer_name, source: 'Manual', status: row.order_status, paymentStatus: row.payment_status, total: cancelledOrder ? 0 : total, paid, outstanding: cancelledOrder ? 0 : Math.max(0, total - paid), cancelled: cancelledOrder }
+        })
+        const rows = [...regularRows, ...manualRows].sort((a, b) => a.date.localeCompare(b.date))
+        if (!cancelled) setFinance({
+          total: rows.reduce((sum, row) => sum + row.total, 0),
+          collected: rows.reduce((sum, row) => sum + row.paid, 0),
+          outstanding: rows.reduce((sum, row) => sum + row.outstanding, 0),
+          orderCount: rows.filter((row) => !row.cancelled).length,
+          cancelled: rows.filter((row) => row.cancelled).length,
+          rows: rows.map(({ cancelled: _cancelled, ...row }) => row),
+        })
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : 'Financial report could not be loaded.')
+      } finally {
+        if (!cancelled) setReportLoading(false)
+      }
+    }
+    void loadFinance()
+    return () => { cancelled = true }
+  }, [reportMode, month, year])
+
+  function downloadReport() {
+    if (!finance) return
+    const headers = ['Date', 'Order Number', 'Customer', 'Source', 'Order Status', 'Payment Status', 'Order Total (PKR)', 'Paid (PKR)', 'Outstanding (PKR)']
+    const csv = [headers, ...finance.rows.map((row) => [new Date(row.date).toLocaleDateString('en-CA'), row.number, row.customer, row.source, row.status, row.paymentStatus, row.total, row.paid, row.outstanding])]
+      .map((line) => line.map((value) => `"${String(value ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+    const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8;' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `jtbazar-financial-report-${reportMode === 'monthly' ? month : year}.csv`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  if (error && !summary) return <ErrorState message={error} retry={load} />
   if (!summary) return <Loading />
-  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">A clear view of what needs attention</p><h2>Good morning, keep things moving.</h2></div><button className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div><div className="admin-metrics"><Metric label="All products" value={summary.total_products} note={`${summary.published_products} published`} /><Metric label="Active categories" value={summary.active_categories} /><Metric label="Pending orders" value={summary.pending_orders} note={`${summary.open_orders} open orders`} /><Metric label="Paid revenue" value={formatMoney(summary.paid_delivered_value)} note="Delivered and paid" /></div><div className="admin-grid-2"><div className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-kicker">Latest activity</p><h3>Recent orders</h3></div><Link to="/admin/orders">View all <ChevronRight size={14} /></Link></div>{orders.length === 0 ? <Empty title="No orders yet" detail="Real orders will appear here once buyers complete checkout." /> : <div className="admin-list">{orders.map((order) => <Link className="admin-list-row" to="/admin/orders" key={order.id}><span><strong>{order.order_number}</strong><small>{order.customer_name} · {formatDate(order.created_at)}</small></span><span><b>{formatMoney(order.total)}</b><em className={statusClass(order.order_status)}>{order.order_status}</em></span></Link>)}</div>}</div><div className="admin-panel admin-panel--tint"><div className="admin-panel-heading"><div><p className="admin-kicker">Operational note</p><h3>Live data only</h3></div><BarChart3 size={20} /></div><p className="admin-copy">This dashboard reads the connected JTBazar Supabase project. Empty tables are shown as empty; no sample products, orders, or revenue are created.</p><div className="admin-callout"><Check size={17} /> RLS and the admin role are enforced by the database.</div></div></div></section>
+  return <section className="admin-content">
+    <div className="admin-page-heading"><div><p className="admin-kicker">A clear view of what needs attention</p><h2>Store overview & finances</h2><p className="admin-copy">Real figures from online and manually recorded orders.</p></div><button className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div>
+    <div className="admin-metrics"><Metric label="All products" value={summary.total_products} note={`${summary.published_products} published`} /><Metric label="Active categories" value={summary.active_categories} /><Metric label="Pending orders" value={summary.pending_orders} note={`${summary.open_orders} open orders`} /><Metric label="Paid revenue" value={formatMoney(summary.paid_delivered_value)} note="Delivered and paid online orders" /></div>
+    <div className="admin-panel admin-finance-panel">
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Money & reporting</p><h3>Financial report</h3><p className="admin-copy">Includes online checkout orders and Manual Orders. Cancelled orders are excluded from totals.</p></div><BarChart3 size={22} /></div>
+      <div className="admin-toolbar admin-finance-toolbar">
+        <div className="admin-segmented"><button type="button" className={reportMode === 'monthly' ? 'is-active' : ''} onClick={() => setReportMode('monthly')}>Monthly</button><button type="button" className={reportMode === 'yearly' ? 'is-active' : ''} onClick={() => setReportMode('yearly')}>Yearly</button></div>
+        {reportMode === 'monthly' ? <label className="admin-report-field">Select month<input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label> : <label className="admin-report-field">Select year<input type="number" min="2000" max="2100" value={year} onChange={(event) => setYear(event.target.value)} /></label>}
+        <button className="admin-button" onClick={downloadReport} disabled={!finance || reportLoading}><Archive size={15} /> Export CSV</button>
+      </div>
+      {error && <div className="admin-state admin-state--error"><CircleAlert size={18} />{error}</div>}
+      {reportLoading && <div className="admin-state"><RefreshCw className="spin" size={18} /> Calculating report…</div>}
+      {finance && !reportLoading && <><div className="admin-metrics admin-finance-metrics"><Metric label="Order value" value={formatMoney(finance.total)} note="Non-cancelled orders" /><Metric label="Money collected" value={formatMoney(finance.collected)} note="Paid amount received" /><Metric label="Outstanding balance" value={formatMoney(finance.outstanding)} note="Still to collect" /><Metric label="Orders counted" value={finance.orderCount} note={`${finance.cancelled} cancelled excluded`} /></div>
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Date</th><th>Order</th><th>Customer</th><th>Source</th><th>Status</th><th>Payment</th><th>Order total</th><th>Paid</th><th>Due</th></tr></thead><tbody>{finance.rows.length === 0 ? <tr><td colSpan={9}>No orders were found for this period.</td></tr> : finance.rows.map((row) => <tr key={row.source + row.number}><td>{formatDate(row.date)}</td><td><strong>{row.number}</strong></td><td>{row.customer}</td><td>{row.source}</td><td><em className={statusClass(row.status)}>{row.status}</em></td><td>{row.paymentStatus}</td><td>{formatMoney(row.total)}</td><td>{formatMoney(row.paid)}</td><td>{formatMoney(row.outstanding)}</td></tr>)}</tbody></table></div>
+      </>}
+    </div>
+    <div className="admin-grid-2"><div className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-kicker">Latest activity</p><h3>Recent online orders</h3></div><Link to="/admin/orders">View all <ChevronRight size={14} /></Link></div>{orders.length === 0 ? <Empty title="No orders yet" detail="Real orders will appear here once buyers complete checkout." /> : <div className="admin-list">{orders.map((order) => <Link className="admin-list-row" to="/admin/orders" key={order.id}><span><strong>{order.order_number}</strong><small>{order.customer_name} · {formatDate(order.created_at)}</small></span><span><b>{formatMoney(order.total)}</b><em className={statusClass(order.order_status)}>{order.order_status}</em></span></Link>)}</div>}</div><div className="admin-panel admin-panel--tint"><div className="admin-panel-heading"><div><p className="admin-kicker">Operational note</p><h3>Live data only</h3></div><BarChart3 size={20} /></div><p className="admin-copy">Financial figures are calculated from actual database orders. No sample revenue or fake transactions are added.</p><div className="admin-callout"><Check size={17} /> RLS and the admin role are enforced by the database.</div></div></div>
+  </section>
 }
 
 function Products() {
