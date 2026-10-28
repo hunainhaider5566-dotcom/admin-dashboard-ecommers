@@ -1115,7 +1115,6 @@ function ManualOrders() {
 
 
 function ManualOrderDetailPage({ orderId }: { orderId: string }) {
-  const { push } = useToast()
   const [order, setOrder] = useState<Record<string, unknown> | null>(null)
   const [items, setItems] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
