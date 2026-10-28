@@ -15,6 +15,7 @@ export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
 export type AdminStoreSettings = Database['public']['Tables']['store_settings']['Row']
 export type AdminNotification = Database['public']['Tables']['notifications']['Row']
 export type AdminSupportTicket = Database['public']['Tables']['support_tickets']['Row']
+export type AdminSupportInboxTicket = { id: string; ticket_kind: 'seller' | 'customer'; requester_name: string; requester_email: string; subject: string; message: string; status: 'open' | 'in_progress' | 'resolved'; admin_response: string | null; created_at: string; updated_at: string }
 
 export interface AdminHero {
   id: string
@@ -378,7 +379,7 @@ export async function setAdminAccountSuspension(userId: string, action: 'suspend
     const message = typeof data === 'object' && data && 'error' in data ? String(data.error) : error.message
     throw new Error(message || 'Account status could not be changed.')
   }
-  return data as { ok: boolean; user_id: string; suspended: boolean }
+  return data as { ok: boolean; user_id: string; suspended: boolean; email_sent?: boolean }
 }
 
 export async function getAdminStoreSettings(): Promise<AdminStoreSettings> {
@@ -433,6 +434,10 @@ export async function getVendorDocumentSignedUrl(path: string): Promise<string |
 export async function reviewSellerApplication(id: string, status: Database['public']['Tables']['seller_profiles']['Row']['status'], reason?: string) {
   const { data, error } = await getSupabase().rpc('admin_review_seller', { p_seller_id: id, p_status: status, p_reason: reason ?? null })
   assertError(error)
+  if (status === 'approved') {
+    const { data: emailData, error: emailError } = await getSupabase().functions.invoke('commerce-email', { body: { event: 'seller_approved', seller_profile_id: id } })
+    return { result: data, email_sent: !emailError && (emailData as { sent?: boolean } | null)?.sent === true }
+  }
   return data
 }
 
@@ -449,15 +454,27 @@ export async function decideMarketplaceCase(id: string, status: Database['public
   assertError(error)
 }
 
-export async function listAdminSupportTickets(): Promise<AdminSupportTicket[]> {
-  const { data, error } = await getSupabase().from('support_tickets').select('*').order('updated_at', { ascending: false }).limit(100)
-  assertError(error)
-  return data ?? []
+export async function listAdminSupportTickets(): Promise<AdminSupportInboxTicket[]> {
+  const client = getSupabase()
+  const [sellerResult, customerResult] = await Promise.all([
+    client.from('support_tickets').select('id,created_by,subject,message,status,admin_response,created_at,updated_at').order('updated_at', { ascending: false }).limit(50),
+    client.from('customer_support_tickets').select('id,requester_name,requester_email,subject,message,status,admin_response,created_at,updated_at').order('updated_at', { ascending: false }).limit(50),
+  ])
+  assertError(sellerResult.error); assertError(customerResult.error)
+  const sellerTickets = await Promise.all((sellerResult.data ?? []).map(async (ticket) => {
+    const { data } = await client.from('seller_profiles').select('shop_name,contact_email').eq('user_id', ticket.created_by).maybeSingle()
+    return { ...ticket, ticket_kind: 'seller' as const, requester_name: data?.shop_name ?? 'Seller', requester_email: data?.contact_email ?? '' }
+  }))
+  return [...sellerTickets, ...(customerResult.data ?? []).map((ticket) => ({ ...ticket, ticket_kind: 'customer' as const }))].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).slice(0, 100)
 }
 
-export async function updateAdminSupportTicket(id: string, status: AdminSupportTicket['status'], admin_response: string) {
-  const { error } = await getSupabase().from('support_tickets').update({ status, admin_response: admin_response.trim() || null, updated_at: new Date().toISOString() }).eq('id', id)
+export async function updateAdminSupportTicket(item: AdminSupportInboxTicket, status: AdminSupportInboxTicket['status'], admin_response: string): Promise<boolean> {
+  const client = getSupabase()
+  const table = item.ticket_kind === 'seller' ? 'support_tickets' : 'customer_support_tickets'
+  const { error } = await client.from(table).update({ status, admin_response: admin_response.trim() || null, updated_at: new Date().toISOString() }).eq('id', item.id)
   assertError(error)
+  const { data, error: emailError } = await client.functions.invoke('support-email', { body: { ticket_id: item.id, ticket_kind: item.ticket_kind, event: 'admin_reply' } })
+  return !emailError && (data as { sent?: boolean } | null)?.sent === true
 }
 
 export async function listAdminHeroes(): Promise<AdminHero[]> {
