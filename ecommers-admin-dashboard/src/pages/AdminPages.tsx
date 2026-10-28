@@ -909,57 +909,127 @@ function Heroes() {
 
 
 function ManualOrders() {
+  type ManualItem = { product_name_snapshot: string; quantity: number; unit_price: number; seller_name_snapshot: string; sku_snapshot: string }
+  const emptyItem = (): ManualItem => ({ product_name_snapshot: '', quantity: 1, unit_price: 0, seller_name_snapshot: '', sku_snapshot: '' })
   const [items, setItems] = useState<Record<string, unknown>[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [customerName, setCustomerName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
+  const [address, setAddress] = useState('')
+  const [note, setNote] = useState('')
+  const [reference, setReference] = useState('')
+  const [source, setSource] = useState('whatsapp')
+  const [paymentMethod, setPaymentMethod] = useState('cod')
+  const [orderStatus, setOrderStatus] = useState('pending')
+  const [deliveryFee, setDeliveryFee] = useState('0')
+  const [discount, setDiscount] = useState('0')
+  const [paidAmount, setPaidAmount] = useState('0')
+  const [formItems, setFormItems] = useState<ManualItem[]>([emptyItem()])
+  const subtotal = formItems.reduce((sum, item) => sum + Math.max(0, Number(item.quantity) || 0) * Math.max(0, Number(item.unit_price) || 0), 0)
+  const total = Math.max(0, subtotal + (Number(deliveryFee) || 0) - (Number(discount) || 0))
   const load = () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     void (async () => {
       try {
         const client = getSupabase() as any
-        const { data, error: queryError } = await client
-          .from('manual_orders')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(200)
+        const { data, error: queryError } = await client.from('manual_orders').select('*').order('created_at', { ascending: false }).limit(200)
         if (queryError) throw new Error(queryError.message)
         setItems((data ?? []) as Record<string, unknown>[])
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : 'Manual orders could not be loaded.')
-      } finally {
-        setLoading(false)
-      }
+      } catch (cause) { setError(cause instanceof Error ? cause.message : 'Manual orders could not be loaded.') }
+      finally { setLoading(false) }
     })()
   }
   useEffect(() => { load() }, [])
   const value = (row: Record<string, unknown>, ...keys: string[]) => {
-    for (const key of keys) {
-      const v = row[key]
-      if (v !== null && v !== undefined && v !== '') return String(v)
-    }
+    for (const key of keys) { const v = row[key]; if (v !== null && v !== undefined && v !== '') return String(v) }
     return '—'
   }
+  const resetForm = () => {
+    setCustomerName(''); setPhone(''); setEmail(''); setAddress(''); setNote(''); setReference('')
+    setSource('whatsapp'); setPaymentMethod('cod'); setOrderStatus('pending')
+    setDeliveryFee('0'); setDiscount('0'); setPaidAmount('0'); setFormItems([emptyItem()])
+  }
+  const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!formItems.length || formItems.some(item => !item.product_name_snapshot.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0)) {
+      setError('Har item ka naam, quantity (kam az kam 1) aur valid price enter karein.'); return
+    }
+    setSaving(true); setError(null)
+    try {
+      const client = getSupabase() as any
+      const { data, error: saveError } = await client.rpc('admin_save_manual_order', {
+        p_order_id: null,
+        p_order: {
+          source, customer_name: customerName, customer_phone: phone, customer_email: email,
+          shipping_address: address, customer_note: note, external_reference: reference,
+          delivery_fee: Number(deliveryFee) || 0, discount_amount: Number(discount) || 0,
+          paid_amount: Number(paidAmount) || 0, payment_method: paymentMethod, order_status: orderStatus
+        },
+        p_items: formItems.map(item => ({
+          product_name_snapshot: item.product_name_snapshot.trim(),
+          quantity: Number(item.quantity), unit_price: Number(item.unit_price),
+          seller_name_snapshot: item.seller_name_snapshot.trim(), sku_snapshot: item.sku_snapshot.trim(),
+          variant_snapshot: {}
+        }))
+      })
+      if (saveError) throw new Error(saveError.message)
+      const created = Array.isArray(data) ? data[0] : data
+      resetForm(); setFormOpen(false); load()
+      window.alert(`Manual order ${created?.manual_order_number ?? ''} successfully save ho gaya.`)
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Manual order save nahi ho saka.') }
+    finally { setSaving(false) }
+  }
+  const fieldStyle = { width: '100%', minWidth: 0, padding: '10px 12px', border: '1px solid var(--admin-border, #d9dee7)', borderRadius: '8px', background: 'var(--admin-surface, #fff)', color: 'inherit', font: 'inherit' }
+  const labelStyle = { display: 'grid', gap: '6px', fontSize: '13px', fontWeight: 600 as const }
   return <section className="admin-content">
     <div className="admin-page-heading">
-      <div><p className="admin-kicker">Phone, WhatsApp and walk-in sales</p><h2>Manual Orders</h2></div>
-      <button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button>
+      <div><p className="admin-kicker">Phone, WhatsApp and walk-in sales</p><h2>Manual Orders</h2><p className="admin-copy">Admin yahan customer ki phone, WhatsApp, social media ya shop wali order manually add kar sakta hai.</p></div>
+      <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <button className="admin-button" onClick={() => { setError(null); setFormOpen(v => !v) }}><Plus size={15} /> {formOpen ? 'Close form' : 'Add Manual Order'}</button>
+        <button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button>
+      </div>
     </div>
+    {error && <ErrorState message={error} retry={() => setError(null)} />}
+    {formOpen && <form className="admin-panel" onSubmit={saveOrder} style={{display:'grid',gap:18,marginBottom:20}}>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">New order</p><h3>Customer and delivery details</h3></div></div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:14}}>
+        <label style={labelStyle}>Customer name *<input style={fieldStyle} required value={customerName} onChange={e=>setCustomerName(e.target.value)} placeholder="Customer full name" /></label>
+        <label style={labelStyle}>Phone / WhatsApp *<input style={fieldStyle} required value={phone} onChange={e=>setPhone(e.target.value)} placeholder="03xx xxxxxxx" /></label>
+        <label style={labelStyle}>Email (optional)<input style={fieldStyle} type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="customer@example.com" /></label>
+        <label style={labelStyle}>Order source *<select style={fieldStyle} value={source} onChange={e=>setSource(e.target.value)}>{[['whatsapp','WhatsApp'],['instagram','Instagram'],['facebook','Facebook'],['phone','Phone call'],['walk_in','Walk-in / shop'],['other','Other']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+      </div>
+      <label style={labelStyle}>Delivery address *<textarea style={fieldStyle} required value={address} onChange={e=>setAddress(e.target.value)} rows={2} placeholder="Full delivery address" /></label>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Order items</p><h3>Products and quantities</h3></div><button type="button" className="admin-button admin-button--outline" onClick={()=>setFormItems(v=>[...v,emptyItem()])}><Plus size={14}/> Add item</button></div>
+      {formItems.map((item,index)=><div key={index} style={{display:'grid',gridTemplateColumns:'minmax(180px,2fr) repeat(3,minmax(90px,1fr)) auto',gap:10,alignItems:'end',padding:12,border:'1px solid var(--admin-border, #d9dee7)',borderRadius:10}}>
+        <label style={labelStyle}>Product name *<input style={fieldStyle} required value={item.product_name_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,product_name_snapshot:e.target.value}:x))} placeholder="Product name" /></label>
+        <label style={labelStyle}>Qty *<input style={fieldStyle} type="number" min="1" max="999" required value={item.quantity} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x))}/></label>
+        <label style={labelStyle}>Unit price (PKR) *<input style={fieldStyle} type="number" min="0" step="0.01" required value={item.unit_price} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,unit_price:Number(e.target.value)}:x))}/></label>
+        <label style={labelStyle}>Seller (optional)<input style={fieldStyle} value={item.seller_name_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,seller_name_snapshot:e.target.value}:x))} placeholder="Seller name"/></label>
+        <button type="button" className="admin-icon-button" aria-label="Remove item" disabled={formItems.length===1} onClick={()=>setFormItems(v=>v.filter((_,i)=>i!==index))}><X size={15}/></button>
+      </div>)}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:14}}>
+        <label style={labelStyle}>Delivery fee (PKR)<input style={fieldStyle} type="number" min="0" step="0.01" value={deliveryFee} onChange={e=>setDeliveryFee(e.target.value)}/></label>
+        <label style={labelStyle}>Discount (PKR)<input style={fieldStyle} type="number" min="0" step="0.01" value={discount} onChange={e=>setDiscount(e.target.value)}/></label>
+        <label style={labelStyle}>Payment method<select style={fieldStyle} value={paymentMethod} onChange={e=>setPaymentMethod(e.target.value)}>{[['cod','Cash on delivery'],['cash','Cash paid'],['bank_transfer','Bank transfer'],['card','Card'],['other','Other']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+        <label style={labelStyle}>Order status<select style={fieldStyle} value={orderStatus} onChange={e=>setOrderStatus(e.target.value)}>{[['pending','Pending'],['processing','Processing'],['shipped','Shipped'],['delivered','Delivered'],['cancelled','Cancelled']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+        <label style={labelStyle}>Amount paid (PKR)<input style={fieldStyle} type="number" min="0" max={total} step="0.01" value={paidAmount} onChange={e=>setPaidAmount(e.target.value)}/></label>
+        <label style={labelStyle}>External reference (optional)<input style={fieldStyle} value={reference} onChange={e=>setReference(e.target.value)} placeholder="WhatsApp ref / receipt no."/></label>
+      </div>
+      <label style={labelStyle}>Order note (optional)<textarea style={fieldStyle} value={note} onChange={e=>setNote(e.target.value)} rows={2} placeholder="Customer instructions or internal note"/></label>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:12,flexWrap:'wrap',paddingTop:12,borderTop:'1px solid var(--admin-border, #d9dee7)'}}>
+        <div><div style={{fontSize:13,color:'var(--admin-muted,#64748b)'}}>Subtotal: PKR {subtotal.toLocaleString('en-PK')} · Delivery: PKR {(Number(deliveryFee)||0).toLocaleString('en-PK')} · Discount: PKR {(Number(discount)||0).toLocaleString('en-PK')}</div><strong style={{fontSize:20}}>Total: PKR {total.toLocaleString('en-PK')}</strong></div>
+        <button className="admin-button" type="submit" disabled={saving}>{saving ? <><RefreshCw size={15} className="spin"/> Saving…</> : <><Check size={15}/> Save Manual Order</>}</button>
+      </div>
+    </form>}
     <div className="admin-panel">
       <div className="admin-panel-heading"><div><p className="admin-kicker">Saved records</p><h3>{items.length} manual orders</h3></div></div>
-      {loading ? <Loading /> : error ? <ErrorState message={error} retry={load} /> : items.length === 0
-        ? <Empty title="No manual orders yet" detail="Manual orders saved in the database will appear here." />
-        : <div className="admin-table-wrap"><table className="admin-table">
-          <thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th></tr></thead>
-          <tbody>{items.map((row, index) => <tr key={value(row, 'id') === '—' ? index : value(row, 'id')}>
-            <td><strong>{value(row, 'order_number', 'manual_order_number', 'id')}</strong></td>
-            <td>{value(row, 'customer_name', 'customer_full_name', 'name')}</td>
-            <td>{value(row, 'customer_phone', 'phone')}</td>
-            <td>{formatMoney(value(row, 'total', 'total_amount', 'grand_total'))}</td>
-            <td><em className={statusClass(value(row, 'status', 'order_status'))}>{value(row, 'status', 'order_status')}</em></td>
-            <td>{value(row, 'created_at')}</td>
-          </tr>)}</tbody>
-        </table></div>}
+      {loading ? <Loading /> : items.length === 0 ? <Empty title="No manual orders yet" detail="Add the first order using the “Add Manual Order” button above." /> :
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th></tr></thead>
+        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td></tr>)}</tbody></table></div>}
     </div>
   </section>
 }
