@@ -106,7 +106,7 @@ function AdminShell({ children }: { children: ReactNode }) {
       <div className="admin-sidebar-footer"><Link to="/"><ArrowLeft size={15} /> View storefront</Link><button onClick={() => void logout()}><LogOut size={15} /> Sign out</button></div>
     </aside>
     {open && <button className="admin-overlay" aria-label="Close navigation" onClick={() => setOpen(false)} />}
-    <main className="admin-main"><header className="admin-topbar"><button className="admin-menu" aria-label="Open navigation" onClick={() => setOpen(true)}><Menu size={20} /></button><div><span className="admin-kicker">JTBazar operations</span><h1>{location.pathname.startsWith('/admin/orders/') ? 'Order detail' : nav.find((item) => location.pathname === item.to)?.label ?? 'Admin studio'}</h1></div><div className="admin-topbar-actions"><div className="admin-notification-wrap"><button type="button" className="admin-notification-button" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); loadNotifications() }}><Bell size={19} />{unreadCount > 0 && <span className="admin-notification-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}</button>{notificationsOpen && <div className="admin-notification-popover" role="dialog" aria-label="Admin notifications"><div className="admin-notification-heading"><strong>Notifications</strong><button type="button" onClick={() => void markAllRead()} disabled={!unreadCount}><CheckCheck size={14} /> Mark all read</button></div>{notificationError && <p className="admin-notification-error">{notificationError}</p>}{notifications.length === 0 ? <p className="admin-notification-empty">No activity notifications yet.</p> : notifications.map((item) => <button type="button" key={item.id} className={`admin-notification-item${item.read_at ? '' : ' is-unread'}`} onClick={() => void openNotification(item)}><span><strong>{item.title}</strong><small>{item.body}</small><small>{formatDate(item.created_at)}</small></span>{!item.read_at && <i aria-label="Unread" />}</button>)}</div>}</div><div className="admin-user"><span>{displayName ?? 'Administrator'}</span><span className="admin-avatar">{(displayName ?? 'A').slice(0, 1).toUpperCase()}</span></div></div></header>{children}</main>
+    <main className="admin-main"><header className="admin-topbar"><button className="admin-menu" aria-label="Open navigation" onClick={() => setOpen(true)}><Menu size={20} /></button><div><span className="admin-kicker">JTBazar operations</span><h1>{location.pathname.startsWith('/admin/manual-orders/') ? 'Manual order detail' : location.pathname.startsWith('/admin/orders/') ? 'Order detail' : nav.find((item) => location.pathname === item.to)?.label ?? 'Admin studio'}</h1></div><div className="admin-topbar-actions"><div className="admin-notification-wrap"><button type="button" className="admin-notification-button" aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ''}`} aria-expanded={notificationsOpen} onClick={() => { setNotificationsOpen((value) => !value); loadNotifications() }}><Bell size={19} />{unreadCount > 0 && <span className="admin-notification-count">{unreadCount > 9 ? '9+' : unreadCount}</span>}</button>{notificationsOpen && <div className="admin-notification-popover" role="dialog" aria-label="Admin notifications"><div className="admin-notification-heading"><strong>Notifications</strong><button type="button" onClick={() => void markAllRead()} disabled={!unreadCount}><CheckCheck size={14} /> Mark all read</button></div>{notificationError && <p className="admin-notification-error">{notificationError}</p>}{notifications.length === 0 ? <p className="admin-notification-empty">No activity notifications yet.</p> : notifications.map((item) => <button type="button" key={item.id} className={`admin-notification-item${item.read_at ? '' : ' is-unread'}`} onClick={() => void openNotification(item)}><span><strong>{item.title}</strong><small>{item.body}</small><small>{formatDate(item.created_at)}</small></span>{!item.read_at && <i aria-label="Unread" />}</button>)}</div>}</div><div className="admin-user"><span>{displayName ?? 'Administrator'}</span><span className="admin-avatar">{(displayName ?? 'A').slice(0, 1).toUpperCase()}</span></div></div></header>{children}</main>
   </div>
 }
 
@@ -118,6 +118,7 @@ function AdminContent({ path }: { path: string }) {
   if (path === '/admin/categories') return <Categories />
   if (path === '/admin/orders') return <Orders />
   if (path === '/admin/manual-orders') return <ManualOrders />
+  if (/^\/admin\/manual-orders\/[^/]+$/.test(path)) return <ManualOrderDetailPage orderId={path.split('/').pop()!} />
   if (/^\/admin\/orders\/[^/]+$/.test(path)) return <OrderDetailPage orderId={path.split('/').pop()!} />
   if (path === '/admin/inventory') return <Inventory />
   if (path === '/admin/sellers') return <Sellers />
@@ -911,6 +912,7 @@ function Heroes() {
 function ManualOrders() {
   type ManualItem = { mode: 'catalog' | 'custom'; product_id: string; seller_id: string; product_name_snapshot: string; quantity: number; unit_price: number; seller_name_snapshot: string; sku_snapshot: string }
   const emptyItem = (): ManualItem => ({ mode: 'catalog', product_id: '', seller_id: '', product_name_snapshot: '', quantity: 1, unit_price: 0, seller_name_snapshot: '', sku_snapshot: '' })
+  const { push } = useToast()
   const [items, setItems] = useState<Record<string, unknown>[]>([])
   const [products, setProducts] = useState<AdminProduct[]>([])
   const [productsLoading, setProductsLoading] = useState(false)
@@ -986,8 +988,8 @@ function ManualOrders() {
       if (saveError) throw new Error(saveError.message)
       const created = Array.isArray(data) ? data[0] : data
       resetForm(); setFormOpen(false); load()
-      window.alert(`Manual order ${created?.manual_order_number ?? ''} successfully save ho gaya.`)
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Manual order save nahi ho saka.') }
+      push(`Manual order ${created?.manual_order_number ?? ''} saved successfully.`, 'success')
+    } catch (cause) { push(cause instanceof Error ? cause.message : 'Manual order save nahi ho saka.', 'error') }
     finally { setSaving(false) }
   }
   const fieldStyle = { width: '100%', minWidth: 0, padding: '10px 12px', border: '1px solid var(--admin-border, #d9dee7)', borderRadius: '8px', background: 'var(--admin-surface, #fff)', color: 'inherit', font: 'inherit' }
@@ -1000,7 +1002,7 @@ function ManualOrders() {
         <button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button>
       </div>
     </div>
-    {error && <ErrorState message={error} retry={() => setError(null)} />}
+    {error && <ErrorState message={error} retry={() => { setError(null); loadProducts() }} />}
     {formOpen && <form className="admin-panel" onSubmit={saveOrder} style={{display:'grid',gap:18,marginBottom:20}}>
       <div className="admin-panel-heading"><div><p className="admin-kicker">New order</p><h3>Customer and delivery details</h3></div></div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:14}}>
@@ -1044,7 +1046,53 @@ function ManualOrders() {
       <div className="admin-panel-heading"><div><p className="admin-kicker">Saved records</p><h3>{items.length} manual orders</h3></div></div>
       {loading ? <Loading /> : items.length === 0 ? <Empty title="No manual orders yet" detail="Add the first order using the “Add Manual Order” button above." /> :
         <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th></tr></thead>
-        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td></tr>)}</tbody></table></div>}
+        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><Link className="admin-link-button" to={`/admin/manual-orders/${value(row,'id')}`}><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></Link></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td></tr>)}</tbody></table></div>}
     </div>
   </section>
 }
+
+
+function ManualOrderDetailPage({ orderId }: { orderId: string }) {
+  const { push } = useToast()
+  const [order, setOrder] = useState<Record<string, unknown> | null>(null)
+  const [items, setItems] = useState<Record<string, unknown>[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const load = () => {
+    setLoading(true); setError(null)
+    void (async () => {
+      try {
+        const client = getSupabase() as any
+        const [orderResult, itemsResult] = await Promise.all([
+          client.from('manual_orders').select('*').eq('id', orderId).single(),
+          client.from('manual_order_items').select('*').eq('manual_order_id', orderId).order('created_at')
+        ])
+        if (orderResult.error) throw new Error(orderResult.error.message)
+        if (itemsResult.error) throw new Error(itemsResult.error.message)
+        setOrder(orderResult.data as Record<string, unknown>)
+        setItems((itemsResult.data ?? []) as Record<string, unknown>[])
+      } catch (cause) { setError(cause instanceof Error ? cause.message : 'Manual order details could not be loaded.') }
+      finally { setLoading(false) }
+    })()
+  }
+  useEffect(() => { load() }, [orderId])
+  const v = (key: string, fallback = '—') => { const value = order?.[key]; return value === null || value === undefined || value === '' ? fallback : String(value) }
+  if (loading) return <div className="admin-content"><Loading /></div>
+  if (error || !order) return <div className="admin-content"><div className="admin-page-heading"><Link className="admin-button admin-button--outline" to="/admin/manual-orders"><ArrowLeft size={15}/> All manual orders</Link></div><ErrorState message={error ?? 'Manual order not found.'} retry={load}/></div>
+  return <section className="admin-content">
+    <div className="admin-page-heading no-print"><div><p className="admin-kicker">Manual order details</p><h2>{v('manual_order_number')}</h2><p className="admin-copy">Created {formatDate(v('created_at'))} · Source: {v('source')}</p></div><div className="admin-action-row"><Link className="admin-button admin-button--outline" to="/admin/manual-orders"><ArrowLeft size={15}/> All manual orders</Link><button className="admin-button" onClick={() => window.print()}><Printer size={15}/> Print order slip</button></div></div>
+    <div className="admin-grid-2 no-print">
+      <div className="admin-panel"><div className="admin-panel-heading"><div><p className="admin-kicker">Customer & delivery</p><h3>{v('customer_name')}</h3></div><em className={statusClass(v('order_status'))}>{v('order_status')}</em></div><p>{v('customer_phone')}</p><p>{v('customer_email','No email provided')}</p><p className="admin-copy">{v('shipping_address')}</p>{v('customer_note','') && <p className="admin-callout">{v('customer_note','')}</p>}{v('external_reference','') && <p>Reference: {v('external_reference')}</p>}</div>
+      <div className="admin-panel"><p className="admin-kicker">Payment & totals</p><h3>{formatMoney(v('total'))}</h3><p>{v('payment_method').toUpperCase()} · {v('payment_status')}</p><p className="admin-copy">Subtotal {formatMoney(v('subtotal'))} · Delivery {formatMoney(v('delivery_fee'))} · Discount {formatMoney(v('discount_amount'))}</p><p>Paid: {formatMoney(v('paid_amount'))}</p><small>Updated {formatDate(v('updated_at'))}</small></div>
+    </div>
+    <article className="admin-order-slip">
+      <header className="slip-brand"><div className="slip-brand__identity"><img className="slip-logo" src="/jtbazar-logo.webp" alt="JTBazar"/><small>MANUAL ORDER SLIP</small></div><div className="slip-brand__order"><small>ORDER NUMBER</small><b>{v('manual_order_number')}</b></div></header>
+      <div className="slip-columns"><section><h3>Customer & delivery</h3><strong>{v('customer_name')}</strong><p>{v('customer_phone')}</p>{v('customer_email','') && <p>{v('customer_email')}</p>}<p>{v('shipping_address')}</p>{v('customer_note','') && <small>Note: {v('customer_note')}</small>}</section><section><h3>Order info</h3><p><b>Order date</b><span>{formatDate(v('created_at'))}</span></p><p><b>Source</b><span>{v('source')}</span></p><p><b>Payment</b><span>{v('payment_method')} · {v('payment_status')}</span></p><p><b>Status</b><span className="slip-status">{v('order_status')}</span></p><p><b>Reference</b><span>{v('external_reference')}</span></p></section></div>
+      <div className="slip-items"><table><thead><tr><th>Product</th><th>SKU</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{items.map((item,index)=><tr key={String(item.id ?? index)}><td><strong>{String(item.product_name_snapshot ?? '—')}</strong><small>{String(item.seller_name_snapshot ?? '')}</small></td><td>{String(item.sku_snapshot ?? '—')}</td><td>{Number(item.quantity ?? 0)}</td><td>{formatMoney(String(item.unit_price ?? 0))}</td><td>{formatMoney(String(item.line_total ?? (Number(item.quantity ?? 0)*Number(item.unit_price ?? 0))))}</td></tr>)}</tbody></table></div>
+      <div className="slip-total"><span>Subtotal</span><b>{formatMoney(v('subtotal'))}</b><span>Delivery</span><b>{formatMoney(v('delivery_fee'))}</b><span>Discount</span><b>− {formatMoney(v('discount_amount'))}</b><strong>Grand total</strong><strong>{formatMoney(v('total'))}</strong></div>
+      <footer><strong>Thank you for shopping with JTBazar.</strong><span>We appreciate your order.</span></footer>
+    </article>
+  </section>
+}
+
+
