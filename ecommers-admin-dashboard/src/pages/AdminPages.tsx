@@ -166,7 +166,8 @@ function Overview() {
           const paid = row.payment_status === 'paid' && !cancelledOrder ? total : 0
           return { date: row.created_at, number: row.order_number, customer: row.customer_name, source: 'Online', status: row.order_status, paymentStatus: row.payment_status, total: cancelledOrder ? 0 : total, paid, outstanding: cancelledOrder ? 0 : Math.max(0, total - paid), cancelled: cancelledOrder }
         })
-        const manualRows = (manualResult.data ?? []).map((row) => {
+        const manualOrderRows = (manualResult.data ?? []) as unknown as { manual_order_number: string; customer_name: string; total: number | string | null; paid_amount: number | string | null; order_status: string; payment_status: string; created_at: string }[]
+        const manualRows = manualOrderRows.map((row) => {
           const total = Number(row.total ?? 0)
           const cancelledOrder = row.order_status === 'cancelled'
           const paid = cancelledOrder ? 0 : Math.min(total, Math.max(0, Number(row.paid_amount ?? 0)))
