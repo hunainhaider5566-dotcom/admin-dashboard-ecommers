@@ -909,9 +909,11 @@ function Heroes() {
 
 
 function ManualOrders() {
-  type ManualItem = { product_name_snapshot: string; quantity: number; unit_price: number; seller_name_snapshot: string; sku_snapshot: string }
-  const emptyItem = (): ManualItem => ({ product_name_snapshot: '', quantity: 1, unit_price: 0, seller_name_snapshot: '', sku_snapshot: '' })
+  type ManualItem = { mode: 'catalog' | 'custom'; product_id: string; seller_id: string; product_name_snapshot: string; quantity: number; unit_price: number; seller_name_snapshot: string; sku_snapshot: string }
+  const emptyItem = (): ManualItem => ({ mode: 'catalog', product_id: '', seller_id: '', product_name_snapshot: '', quantity: 1, unit_price: 0, seller_name_snapshot: '', sku_snapshot: '' })
   const [items, setItems] = useState<Record<string, unknown>[]>([])
+  const [products, setProducts] = useState<AdminProduct[]>([])
+  const [productsLoading, setProductsLoading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -943,7 +945,8 @@ function ManualOrders() {
       finally { setLoading(false) }
     })()
   }
-  useEffect(() => { load() }, [])
+  const loadProducts = () => { setProductsLoading(true); void listAdminProducts('').then(setProducts).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Products could not be loaded.')).finally(() => setProductsLoading(false)) }
+  useEffect(() => { load(); loadProducts() }, [])
   const value = (row: Record<string, unknown>, ...keys: string[]) => {
     for (const key of keys) { const v = row[key]; if (v !== null && v !== undefined && v !== '') return String(v) }
     return '—'
@@ -953,9 +956,11 @@ function ManualOrders() {
     setSource('whatsapp'); setPaymentMethod('cod'); setOrderStatus('pending')
     setDeliveryFee('0'); setDiscount('0'); setPaidAmount('0'); setFormItems([emptyItem()])
   }
+  const changeItemMode = (index: number, mode: 'catalog' | 'custom') => setFormItems(v => v.map((item,i) => i === index ? { ...item, mode, product_id: '', seller_id: '', product_name_snapshot: '', unit_price: 0, seller_name_snapshot: '', sku_snapshot: '' } : item))
+  const selectProduct = (index: number, productId: string) => { const product = products.find(p => p.id === productId); setFormItems(v => v.map((item,i) => i === index ? { ...item, product_id: product?.id ?? '', seller_id: (product as any)?.seller_id ?? '', product_name_snapshot: product?.name ?? '', unit_price: Number(product?.price ?? 0), seller_name_snapshot: '', sku_snapshot: product?.sku ?? '' } : item)) }
   const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!formItems.length || formItems.some(item => !item.product_name_snapshot.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0)) {
+    if (!formItems.length || formItems.some(item => !item.product_name_snapshot.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0 || (item.mode === 'catalog' && !item.product_id))) {
       setError('Har item ka naam, quantity (kam az kam 1) aur valid price enter karein.'); return
     }
     setSaving(true); setError(null)
@@ -970,6 +975,8 @@ function ManualOrders() {
           paid_amount: Number(paidAmount) || 0, payment_method: paymentMethod, order_status: orderStatus
         },
         p_items: formItems.map(item => ({
+          product_id: item.mode === 'catalog' ? item.product_id : null,
+          seller_id: item.mode === 'catalog' ? (item.seller_id || null) : null,
           product_name_snapshot: item.product_name_snapshot.trim(),
           quantity: Number(item.quantity), unit_price: Number(item.unit_price),
           seller_name_snapshot: item.seller_name_snapshot.trim(), sku_snapshot: item.sku_snapshot.trim(),
@@ -989,7 +996,7 @@ function ManualOrders() {
     <div className="admin-page-heading">
       <div><p className="admin-kicker">Phone, WhatsApp and walk-in sales</p><h2>Manual Orders</h2><p className="admin-copy">Admin yahan customer ki phone, WhatsApp, social media ya shop wali order manually add kar sakta hai.</p></div>
       <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-        <button className="admin-button" onClick={() => { setError(null); setFormOpen(v => !v) }}><Plus size={15} /> {formOpen ? 'Close form' : 'Add Manual Order'}</button>
+        <button className="admin-button" onClick={() => { setError(null); if (!products.length) loadProducts(); setFormOpen(v => !v) }}><Plus size={15} /> {formOpen ? 'Close form' : 'Add Manual Order'}</button>
         <button className="admin-button admin-button--outline" onClick={load}><RefreshCw size={15} /> Refresh</button>
       </div>
     </div>
@@ -1004,12 +1011,20 @@ function ManualOrders() {
       </div>
       <label style={labelStyle}>Delivery address *<textarea style={fieldStyle} required value={address} onChange={e=>setAddress(e.target.value)} rows={2} placeholder="Full delivery address" /></label>
       <div className="admin-panel-heading"><div><p className="admin-kicker">Order items</p><h3>Products and quantities</h3></div><button type="button" className="admin-button admin-button--outline" onClick={()=>setFormItems(v=>[...v,emptyItem()])}><Plus size={14}/> Add item</button></div>
-      {formItems.map((item,index)=><div key={index} style={{display:'grid',gridTemplateColumns:'minmax(180px,2fr) repeat(3,minmax(90px,1fr)) auto',gap:10,alignItems:'end',padding:12,border:'1px solid var(--admin-border, #d9dee7)',borderRadius:10}}>
-        <label style={labelStyle}>Product name *<input style={fieldStyle} required value={item.product_name_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,product_name_snapshot:e.target.value}:x))} placeholder="Product name" /></label>
-        <label style={labelStyle}>Qty *<input style={fieldStyle} type="number" min="1" max="999" required value={item.quantity} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x))}/></label>
-        <label style={labelStyle}>Unit price (PKR) *<input style={fieldStyle} type="number" min="0" step="0.01" required value={item.unit_price} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,unit_price:Number(e.target.value)}:x))}/></label>
-        <label style={labelStyle}>Seller (optional)<input style={fieldStyle} value={item.seller_name_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,seller_name_snapshot:e.target.value}:x))} placeholder="Seller name"/></label>
-        <button type="button" className="admin-icon-button" aria-label="Remove item" disabled={formItems.length===1} onClick={()=>setFormItems(v=>v.filter((_,i)=>i!==index))}><X size={15}/></button>
+      {formItems.map((item,index)=><div key={index} style={{display:'grid',gap:12,padding:14,border:'1px solid var(--admin-border, #d9dee7)',borderRadius:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10,flexWrap:'wrap'}}><strong>Item {index+1}</strong><div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+          <button type="button" className={item.mode==='catalog'?'admin-button':'admin-button admin-button--outline'} onClick={()=>changeItemMode(index,'catalog')}>Select catalog product</button>
+          <button type="button" className={item.mode==='custom'?'admin-button':'admin-button admin-button--outline'} onClick={()=>changeItemMode(index,'custom')}>Custom product</button>
+          <button type="button" className="admin-icon-button" aria-label="Remove item" disabled={formItems.length===1} onClick={()=>setFormItems(v=>v.filter((_,i)=>i!==index))}><X size={15}/></button>
+        </div></div>
+        {item.mode==='catalog' ? <label style={labelStyle}>Product dropdown *<select style={fieldStyle} required value={item.product_id} onChange={e=>selectProduct(index,e.target.value)}><option value="">{productsLoading?'Loading products…':'Choose a product from catalog'}</option>{products.map(product=><option key={product.id} value={product.id}>{product.name} · {formatMoney(product.price)}{product.sku? ' · SKU '+product.sku:''}</option>)}</select>{!productsLoading&&products.length===0&&<small>No catalog products loaded. Try Refresh, or choose Custom product.</small>}</label> :
+          <label style={labelStyle}>Custom product name *<input style={fieldStyle} required value={item.product_name_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,product_name_snapshot:e.target.value}:x))} placeholder="Enter product not available in catalog"/></label>}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(145px,1fr))',gap:12}}>
+          <label style={labelStyle}>Quantity *<input style={fieldStyle} type="number" min="1" max="999" required value={item.quantity} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,quantity:Number(e.target.value)}:x))}/></label>
+          <label style={labelStyle}>Unit price (PKR) *<input style={fieldStyle} type="number" min="0" step="0.01" required value={item.unit_price} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,unit_price:Number(e.target.value)}:x))}/></label>
+          <label style={labelStyle}>Seller (optional)<input style={fieldStyle} value={item.seller_name_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,seller_name_snapshot:e.target.value}:x))} placeholder="Seller name"/></label>
+          <label style={labelStyle}>SKU (optional)<input style={fieldStyle} value={item.sku_snapshot} onChange={e=>setFormItems(v=>v.map((x,i)=>i===index?{...x,sku_snapshot:e.target.value}:x))} placeholder="SKU"/></label>
+        </div>
       </div>)}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:14}}>
         <label style={labelStyle}>Delivery fee (PKR)<input style={fieldStyle} type="number" min="0" step="0.01" value={deliveryFee} onChange={e=>setDeliveryFee(e.target.value)}/></label>
