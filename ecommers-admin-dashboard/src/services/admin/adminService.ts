@@ -322,13 +322,22 @@ export async function getAdminOrderDetail(id: string) {
 }
 
 export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status']) {
-  const { error } = await getSupabase().from('orders').update({ order_status }).eq('id', id)
+  const client = getSupabase()
+  const { error } = await client.from('orders').update({ order_status }).eq('id', id)
   assertError(error)
+
+  // Send a customer notification after the status update succeeds.
   if (['confirmed', 'shipped', 'delivered'].includes(order_status)) {
-    const { data, error: emailError } = await getSupabase().functions.invoke('commerce-email', { body: { event: 'order_status', order_id: id, status: order_status } })
-    return !emailError && (data as { sent?: boolean } | null)?.sent === true
+    const { data, error: emailError } = await client.functions.invoke('commerce-email', {
+      body: { event: 'order_status', order_id: id, status: order_status },
+    })
+
+    if (emailError) {
+      console.error('Order status email invocation failed:', emailError.message)
+    } else if (!data?.sent) {
+      console.warn('Order status email was not sent:', data)
+    }
   }
-  return true
 }
 
 export async function addOrderNote(order_id: string, note: string) {
