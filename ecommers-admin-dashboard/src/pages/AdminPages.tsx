@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Users, X } from 'lucide-react'
+import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Trash2, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminAccountSuspensions, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminProducts, listAdminPromotions, listAdminSupportTickets, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, setAdminAccountSuspension, updateAdminStoreSettings, updateAdminSupportTicket, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCase, type AdminCategory, type AdminAccountSuspension, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminSupportInboxTicket, type AdminVariant } from '../services/admin/adminService'
@@ -948,6 +948,21 @@ function ManualOrders() {
     })()
   }
   const loadProducts = () => { setProductsLoading(true); void listAdminProducts('').then(setProducts).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Products could not be loaded.')).finally(() => setProductsLoading(false)) }
+  const deleteManualOrder = async (row: Record<string, unknown>) => {
+    const id = String(row.id ?? '')
+    if (!id) { push('Order ID missing; this record cannot be removed.', 'error'); return }
+    const number = String(row.manual_order_number ?? 'this order')
+    if (!window.confirm(`Remove manual order ${number} and its associated items?`)) return
+    try {
+      const client = getSupabase() as any
+      const { error: deleteError } = await client.from('manual_orders').delete().eq('id', id).select('id').single()
+      if (deleteError) throw new Error(deleteError.message)
+      setItems(current => current.filter(item => String(item.id ?? '') !== id))
+      push(`Manual order ${number} removed.`, 'success')
+    } catch (cause) {
+      push(cause instanceof Error ? cause.message : 'Manual order could not be removed.', 'error')
+    }
+  }
   useEffect(() => { load(); loadProducts() }, [])
   const value = (row: Record<string, unknown>, ...keys: string[]) => {
     for (const key of keys) { const v = row[key]; if (v !== null && v !== undefined && v !== '') return String(v) }
@@ -1045,8 +1060,8 @@ function ManualOrders() {
     <div className="admin-panel">
       <div className="admin-panel-heading"><div><p className="admin-kicker">Saved records</p><h3>{items.length} manual orders</h3></div></div>
       {loading ? <Loading /> : items.length === 0 ? <Empty title="No manual orders yet" detail="Add the first order using the “Add Manual Order” button above." /> :
-        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th></tr></thead>
-        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><Link className="admin-link-button" to={`/admin/manual-orders/${value(row,'id')}`}><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></Link></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td></tr>)}</tbody></table></div>}
+        <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order number</th><th>Customer</th><th>Phone</th><th>Total</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody>{items.map((row,index)=><tr key={value(row,'id')==='—'?index:value(row,'id')}><td><Link className="admin-link-button" to={`/admin/manual-orders/${value(row,'id')}`}><strong>{value(row,'manual_order_number','order_number','id')}</strong><small>{value(row,'source')}</small></Link></td><td>{value(row,'customer_name')}<small>{value(row,'customer_email')}</small></td><td>{value(row,'customer_phone')}</td><td>{formatMoney(value(row,'total'))}</td><td><em className={statusClass(value(row,'order_status'))}>{value(row,'order_status')}</em></td><td>{formatDate(value(row,'created_at'))}</td><td><button type="button" className="admin-small-button admin-small-button--danger" onClick={() => void deleteManualOrder(row)} title={`Remove ${value(row,'manual_order_number')}`}><Trash2 size={14}/> Delete</button></td></tr>)}</tbody></table></div>}
     </div>
   </section>
 }
