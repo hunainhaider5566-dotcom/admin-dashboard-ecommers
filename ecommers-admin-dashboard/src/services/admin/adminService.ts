@@ -2,7 +2,7 @@ import { getSupabase } from '../../lib/supabase'
 import type { Database, Json } from '../../types/database'
 
 export type AdminSummary = Database['public']['Functions']['admin_dashboard_summary']['Returns'][number]
-export type AdminProduct = Database['public']['Tables']['products']['Row'] & { category: { name: string } | null; inventory: number; image_url: string | null }
+export type AdminProduct = Database['public']['Tables']['products']['Row'] & { category: { name: string } | null; inventory: number; image_url: string | null; seller_name: string | null }
 export type AdminCategory = Database['public']['Tables']['categories']['Row']
 export type AdminOrder = Database['public']['Tables']['orders']['Row']
 export type AdminOrderItem = Database['public']['Tables']['order_items']['Row']
@@ -72,14 +72,16 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
   if (rows.length === 0) return []
 
   const productIds = rows.map((row) => row.id)
-  const [categoriesResult, inventoryResult, imagesResult] = await Promise.all([
+  const [categoriesResult, inventoryResult, imagesResult, sellersResult] = await Promise.all([
     client.from('categories').select('id, name').limit(500),
     client.from('product_inventory').select('product_id, quantity').in('product_id', productIds).limit(1000),
     client.from('product_images').select('product_id, image_url, storage_path, is_primary, sort_order').in('product_id', productIds).order('sort_order').limit(1000),
+    client.from('seller_profiles').select('id, shop_name').limit(1000),
   ])
-  assertError(categoriesResult.error); assertError(inventoryResult.error); assertError(imagesResult.error)
+  assertError(categoriesResult.error); assertError(inventoryResult.error); assertError(imagesResult.error); assertError(sellersResult.error)
 
   const categoryNames = new Map((categoriesResult.data ?? []).map((category) => [category.id, category.name]))
+  const sellerNames = new Map((sellersResult.data ?? []).map((seller) => [seller.id, seller.shop_name]))
   const inventoryTotals = new Map<string, number>()
   for (const row of inventoryResult.data ?? []) {
     inventoryTotals.set(row.product_id, (inventoryTotals.get(row.product_id) ?? 0) + (row.quantity ?? 0))
@@ -107,12 +109,13 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
       category: row.category_id ? { name: categoryNames.get(row.category_id) ?? 'Unassigned' } : null,
       inventory: inventoryTotals.get(row.id) ?? 0,
       image_url: imageUrl,
+      seller_name: row.seller_id ? sellerNames.get(row.seller_id) ?? null : null,
     }
   }))
 }
 
 export async function listAdminCategories(): Promise<AdminCategory[]> {
-  const { data, error } = await getSupabase().from('categories').select('id, parent_id, name, slug, description, eyebrow, image_url, is_active, sort_order, seo_title, seo_description, created_at, updated_at').order('sort_order').order('name').limit(200)
+  const { data, error } = await getSupabase().from('categories').select('id, parent_id, name, slug, description, eyebrow, image_url, is_active, is_coming_soon, sort_order, seo_title, seo_description, created_at, updated_at').order('sort_order').order('name').limit(200)
   assertError(error)
   return (data ?? []) as AdminCategory[]
 }
