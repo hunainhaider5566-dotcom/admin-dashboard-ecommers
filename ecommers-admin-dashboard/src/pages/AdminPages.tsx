@@ -369,6 +369,35 @@ function Orders() {
   return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Fulfilment workflow</p><h2>Orders</h2><p className="admin-copy">Search and filter orders; open any order for full details or a printable slip.</p></div></div><div className="admin-toolbar"><label className="admin-search"><Search size={16} /><input value={search} onChange={(event) => { setSearch(event.target.value); setPage(0) }} placeholder="Search order or customer" /></label><select aria-label="Filter orders by vendor" value={vendorId} onChange={(event) => { setVendorId(event.target.value); setPage(0) }}><option value="all">All vendors</option>{vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.shop_name}</option>)}</select><select aria-label="Filter order status" value={status} onChange={(event) => { setStatus(event.target.value); setPage(0) }}><option value="all">All statuses</option>{['pending','confirmed','processing','shipped','delivered','cancelled'].map((value) => <option key={value}>{value}</option>)}</select><select aria-label="Sort orders" value={sort} onChange={(event) => { setSort(event.target.value); setPage(0) }}><option value="created_at.desc">Newest first</option><option value="created_at.asc">Oldest first</option><option value="total.desc">Highest total</option><option value="total.asc">Lowest total</option></select><button className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No orders found" detail="Try a different search or status filter." /> : <><div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Order</th><th>Customer</th><th>Vendor</th><th>Total</th><th>Payment</th><th>Status</th><th>Next action</th></tr></thead><tbody>{items.map((order) => <tr key={order.id}><td><Link className="admin-link-button" to={`/admin/orders/${order.id}`}><strong>{order.order_number}</strong><small>{formatDate(order.created_at)}</small></Link></td><td>{order.customer_name}<small>{order.customer_phone}</small></td><td>{order.vendor_names.length ? order.vendor_names.join(', ') : 'No vendor'}</td><td>{formatMoney(order.total)}</td><td><em className={statusClass(order.payment_status)}>{order.payment_status}</em></td><td><em className={statusClass(order.order_status)}>{order.order_status}</em></td><td><div className="admin-action-row">{order.order_status === 'pending' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'confirmed')}>Confirm</button>}{order.order_status === 'confirmed' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'processing')}>Process</button>}{order.order_status === 'processing' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'shipped')}>Ship</button>}{order.order_status === 'shipped' && <button className="admin-small-button" onClick={() => void changeStatus(order, 'delivered')}>Deliver</button>}{['pending','confirmed','processing'].includes(order.order_status) && <button className="admin-small-button admin-small-button--danger" onClick={() => void changeStatus(order, 'cancelled')}>Cancel</button>}</div></td></tr>)}</tbody></table></div><Pagination page={page} pageSize={pageSize} total={total} onPage={setPage} onPageSize={(size) => { setPage(0); setPageSize(size) }} /></>}</section>
 }
 
+function formatVariantSnapshot(snapshot: unknown): string {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return ''
+  const data = snapshot as Record<string, unknown>
+  const parts: string[] = []
+  const label = typeof data.label === 'string' ? data.label.trim() : ''
+  const value = data.value
+  if (value !== null && value !== undefined && String(value).trim()) {
+    parts.push(label ? `${label}: ${String(value).trim()}` : String(value).trim())
+  }
+  const attributes = data.attributes
+  if (attributes && typeof attributes === 'object' && !Array.isArray(attributes)) {
+    for (const [key, raw] of Object.entries(attributes as Record<string, unknown>)) {
+      if (raw === null || raw === undefined || typeof raw === 'object' || !String(raw).trim()) continue
+      const prettyKey = key.replace(/[_-]+/g, ' ').replace(/\\b\\w/g, (char) => char.toUpperCase())
+      const prettyValue = typeof raw === 'string' ? raw.trim().replace(/\\b\\w/g, (char) => char.toUpperCase()) : String(raw)
+      parts.push(`${prettyKey}: ${prettyValue}`)
+    }
+  }
+  // Also support older snapshots that contain plain option key/value pairs.
+  if (!parts.length) {
+    for (const [key, raw] of Object.entries(data)) {
+      if (['label', 'value', 'attributes'].includes(key) || raw === null || raw === undefined || typeof raw === 'object' || !String(raw).trim()) continue
+      const prettyKey = key.replace(/[_-]+/g, ' ').replace(/\\b\\w/g, (char) => char.toUpperCase())
+      parts.push(`${prettyKey}: ${String(raw).trim()}`)
+    }
+  }
+  return parts.join(' · ')
+}
+
 function OrderDetailPage({ orderId }: { orderId: string }) {
   const [detail, setDetail] = useState<Awaited<ReturnType<typeof getAdminOrderDetail>> | null>(null); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true)
   const load = () => { setLoading(true); setError(null); void getAdminOrderDetail(orderId).then(setDetail).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Order details could not be loaded.')).finally(() => setLoading(false)) }
@@ -384,7 +413,7 @@ function OrderDetailPage({ orderId }: { orderId: string }) {
     <article className="admin-order-slip">
       <header className="slip-brand"><div className="slip-brand__identity"><img className="slip-logo" src="/jtbazar-logo.webp" alt="JTBazar" /><small>ORDER PACKING SLIP</small></div><div className="slip-brand__order"><small>ORDER NUMBER</small><b>{order.order_number}</b></div></header>
       <div className="slip-columns"><section><h3>Ship to</h3><strong>{order.customer_name}</strong><p>{order.customer_phone}</p><p>{address}</p>{order.delivery_lat !== null && order.delivery_lng !== null && <p><a href={`https://www.google.com/maps?q=${order.delivery_lat},${order.delivery_lng}`} target="_blank" rel="noreferrer">Open delivery pin in Maps</a></p>}{typeof shipping.delivery_instructions === 'string' && shipping.delivery_instructions && <small>Delivery note: {shipping.delivery_instructions}</small>}{order.delivery_location_name && <small className="slip-location">{order.delivery_location_name}</small>}</section><section><h3>Order info</h3><p><b>Order date</b><span>{formatDate(order.created_at)}</span></p><p><b>Payment</b><span>{order.payment_method.toUpperCase()} · {order.payment_status}</span></p><p><b>Order status</b><span className="slip-status">{order.order_status}</span></p></section></div>
-      <div className="slip-items"><table><thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{items.map((item) => { const variant = item.variant_snapshot && typeof item.variant_snapshot === 'object' && !Array.isArray(item.variant_snapshot) ? Object.entries(item.variant_snapshot as Record<string, unknown>).filter(([, value]) => value != null && String(value).trim()).map(([key, value]) => `${key}: ${value && typeof value === 'object' ? JSON.stringify(value) : String(value)}`).join(' · ') : ''; return <tr key={item.id}><td><strong>{item.product_name_snapshot}</strong><small>{variant || 'Standard item'}</small></td><td>{item.sku_snapshot ?? '—'}</td><td>{item.quantity}</td><td>{formatMoney(item.unit_price)}</td><td>{formatMoney(item.line_total)}</td></tr> })}</tbody></table></div>
+      <div className="slip-items"><table><thead><tr><th>Item</th><th>SKU</th><th>Qty</th><th>Unit price</th><th>Total</th></tr></thead><tbody>{items.map((item) => { const variant = formatVariantSnapshot(item.variant_snapshot); return <tr key={item.id}><td><strong>{item.product_name_snapshot}</strong>{variant && <small>{variant}</small>}</td><td>{item.sku_snapshot ?? '—'}</td><td>{item.quantity}</td><td>{formatMoney(item.unit_price)}</td><td>{formatMoney(item.line_total)}</td></tr> })}</tbody></table></div>
       <div className="slip-total"><span>Subtotal</span><b>{formatMoney(order.subtotal)}</b><span>Delivery</span><b>{formatMoney(order.delivery_fee)}</b><span>Discount</span><b>− {formatMoney(order.discount_amount)}</b><strong>Grand total</strong><strong>{formatMoney(order.total)}</strong></div>
       <footer><strong>Thank you for shopping with JTBazar.</strong><span>We appreciate your order.</span></footer>
     </article>
