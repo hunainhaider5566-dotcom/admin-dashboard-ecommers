@@ -5,6 +5,7 @@ export type AdminSummary = Database['public']['Functions']['admin_dashboard_summ
 export type AdminProduct = Database['public']['Tables']['products']['Row'] & { category: { name: string } | null; inventory: number; image_url: string | null; seller_name: string | null }
 export type AdminCategory = Database['public']['Tables']['categories']['Row']
 export type AdminOrder = Database['public']['Tables']['orders']['Row']
+export type AdminOrderVendor = { id: string; shop_name: string }
 export type AdminOrderItem = Database['public']['Tables']['order_items']['Row']
 export type AdminInventory = Database['public']['Tables']['product_inventory']['Row'] & { product_name: string; variant_name: string | null }
 export type AdminCustomer = Database['public']['Functions']['admin_customer_summary']['Returns'][number]
@@ -296,13 +297,28 @@ export async function markAllAdminNotificationsRead() {
   assertError(error)
 }
 
-export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc'): Promise<{ items: AdminOrder[]; count: number }> {
+export async function listAdminOrderVendors(): Promise<AdminOrderVendor[]> {
+  const { data, error } = await getSupabase().from('seller_profiles').select('id, shop_name').order('shop_name').limit(1000)
+  assertError(error)
+  return (data ?? []) as AdminOrderVendor[]
+}
+
+export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc', vendorId = 'all'): Promise<{ items: AdminOrder[]; count: number }> {
   const [column, direction] = sort.split('.')
   const allowedSorts = new Set(['created_at', 'updated_at', 'total', 'order_number', 'order_status'])
   const sortColumn = allowedSorts.has(column) ? column : 'created_at'
   const ascending = direction === 'asc'
   const from = Math.max(0, page) * Math.max(1, pageSize)
-  let query = getSupabase().from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, created_at, updated_at', { count: 'exact' }).order(sortColumn, { ascending }).range(from, from + Math.max(1, pageSize) - 1)
+  const client = getSupabase()
+  let vendorOrderIds: string[] | null = null
+  if (vendorId !== 'all') {
+    const { data: matchingItems, error: itemError } = await client.from('order_items').select('order_id').eq('seller_id', vendorId).limit(10000)
+    assertError(itemError)
+    vendorOrderIds = [...new Set((matchingItems ?? []).map((item) => item.order_id).filter((id): id is string => Boolean(id)))]
+    if (vendorOrderIds.length === 0) return { items: [], count: 0 }
+  }
+  let query = client.from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, created_at, updated_at', { count: 'exact' }).order(sortColumn, { ascending }).range(from, from + Math.max(1, pageSize) - 1)
+  if (vendorOrderIds) query = query.in('id', vendorOrderIds)
   const term = search.trim().replace(/[%,()]/g, ' ')
   if (term) query = query.or(`order_number.ilike.%${term}%,customer_name.ilike.%${term}%,customer_phone.ilike.%${term}%`)
   if (status !== 'all') query = query.eq('order_status', status as Database['public']['Tables']['orders']['Row']['order_status'])
