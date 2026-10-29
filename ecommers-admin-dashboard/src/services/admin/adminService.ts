@@ -303,7 +303,7 @@ export async function listAdminOrderVendors(): Promise<AdminOrderVendor[]> {
   return (data ?? []) as AdminOrderVendor[]
 }
 
-export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc', vendorId = 'all'): Promise<{ items: AdminOrder[]; count: number }> {
+export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc', vendorId = 'all'): Promise<{ items: (AdminOrder & { vendor_names: string[] })[]; count: number }> {
   const [column, direction] = sort.split('.')
   const allowedSorts = new Set(['created_at', 'updated_at', 'total', 'order_number', 'order_status'])
   const sortColumn = allowedSorts.has(column) ? column : 'created_at'
@@ -324,7 +324,17 @@ export async function listAdminOrders(search = '', status = 'all', page = 0, pag
   if (status !== 'all') query = query.eq('order_status', status as Database['public']['Tables']['orders']['Row']['order_status'])
   const { data, error, count } = await query
   assertError(error)
-  return { items: (data ?? []) as AdminOrder[], count: count ?? 0 }
+  const rows = (data ?? []) as AdminOrder[]
+  const orderIds = rows.map((row) => row.id)
+  const { data: orderItems, error: orderItemsError } = orderIds.length ? await client.from('order_items').select('order_id, seller_id').in('order_id', orderIds).limit(10000) : { data: [], error: null }
+  assertError(orderItemsError)
+  const sellerIds = [...new Set((orderItems ?? []).map((item) => item.seller_id).filter((id): id is string => Boolean(id)))]
+  const { data: sellers, error: sellersError } = sellerIds.length ? await client.from('seller_profiles').select('id, shop_name').in('id', sellerIds).limit(1000) : { data: [], error: null }
+  assertError(sellersError)
+  const sellerNames = new Map((sellers ?? []).map((seller) => [seller.id, seller.shop_name]))
+  const namesByOrder = new Map<string, Set<string>>()
+  for (const item of orderItems ?? []) { if (!item.seller_id) continue; const name = sellerNames.get(item.seller_id); if (!name) continue; const names = namesByOrder.get(item.order_id) ?? new Set<string>(); names.add(name); namesByOrder.set(item.order_id, names) }
+  return { items: rows.map((row) => ({ ...row, vendor_names: [...(namesByOrder.get(row.id) ?? [])] })), count: count ?? 0 }
 }
 
 export async function getAdminOrderDetail(id: string) {
