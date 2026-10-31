@@ -352,8 +352,15 @@ export async function getAdminOrderDetail(id: string) {
 
 export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status']) {
   const client = getSupabase()
-  const { error } = await client.from('orders').update({ order_status }).eq('id', id)
-  assertError(error)
+  if (order_status === 'confirmed') {
+    const { error } = await (client as any).rpc('admin_confirm_customer_order', {
+      p_order_id: id, p_decision: 'confirmed', p_note: 'Confirmed after marketplace phone verification.',
+    })
+    assertError(error)
+  } else {
+    const { error } = await client.from('orders').update({ order_status }).eq('id', id)
+    assertError(error)
+  }
 
   // Send a customer notification after the status update succeeds.
   if (['confirmed', 'shipped', 'delivered'].includes(order_status)) {
@@ -367,6 +374,23 @@ export async function updateOrder(id: string, order_status: Database['public']['
       console.warn('Order status email was not sent:', data)
     }
   }
+}
+
+export async function listAdminVendorPickups(orderId?: string) {
+  const { data, error } = await (getSupabase() as any).rpc('admin_list_vendor_pickups', {
+    p_order_id: orderId ?? null,
+  })
+  assertError(error)
+  return data ?? []
+}
+
+export async function markAdminVendorPickedUp(pickupId: string) {
+  const { data, error } = await (getSupabase() as any).rpc('admin_mark_vendor_picked_up', {
+    p_pickup_id: pickupId,
+  })
+  assertError(error)
+  if (!data) throw new Error('Vendor pickup could not be marked collected.')
+  return data
 }
 
 export async function addOrderNote(order_id: string, note: string) {
