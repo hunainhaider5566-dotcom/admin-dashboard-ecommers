@@ -95,9 +95,6 @@ export interface Database {
       admin_account_suspensions: { Args: Record<string, never>; Returns: { user_id: string; reason: string; suspended_at: string; suspended_by: string }[] }
       admin_update_store_settings: { Args: { p_settings: Json }; Returns: StoreSettingsRow }
       list_public_shops: { Args: Record<string, never>; Returns: { id: string; shop_name: string; slug: string; description: string; created_at: string; product_count: number; shop_image_url: string | null }[] }
-      admin_list_product_deletion_requests: { Args: Record<string, never>; Returns: { id: string; product_id: string; product_name: string; product_image_url: string | null; seller_id: string; shop_name: string; reason: string; status: 'pending' | 'approved' | 'rejected'; admin_note: string | null; created_at: string }[] }
-      admin_delete_product: { Args: { p_product_id: string }; Returns: undefined }
-      admin_review_product_deletion: { Args: { p_request_id: string; p_approve: boolean; p_admin_note?: string | null }; Returns: Json }
       seller_resubmit_application: { Args: Record<string, never>; Returns: SellerProfileRow }
     }
     Enums: {
