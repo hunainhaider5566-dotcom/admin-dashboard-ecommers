@@ -58,3 +58,33 @@
 
 .admin-variant-row{grid-template-columns:1fr 1fr 1fr 1fr 1fr 34px}@media(max-width:560px){.admin-variant-row{grid-template-columns:1fr 1fr}.admin-variant-row .admin-icon-button{width:100%}}
 .admin-form label small{font-size:11px;font-weight:500;color:#888b82}
+
+
+/* Complete customer return / complaint case details */
+.admin-case-list{display:grid;gap:14px}
+.admin-case-card{overflow:hidden;border:1px solid #e7e3dc;border-radius:10px;background:#fff;box-shadow:0 8px 24px rgba(32,35,31,.045)}
+.admin-case-card__summary{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:17px 20px}
+.admin-case-card__identity{display:grid;justify-items:start;gap:6px;min-width:0}
+.admin-case-card__identity strong{font-size:14px;color:#242722}
+.admin-case-card__identity small{color:#77796f;font-size:11px}
+.admin-case-card__actions{display:flex;align-items:center;justify-content:flex-end;gap:9px;flex-wrap:wrap}
+.admin-case-detail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:20px;border-top:1px solid #eeeae3;background:#fcfbf8}
+.admin-case-detail>section{min-width:0;padding:16px;border:1px solid #ece8df;border-radius:8px;background:#fff}
+.admin-case-detail h3{margin:0 0 12px;color:#9d482f;font-size:10px;letter-spacing:.13em;text-transform:uppercase}
+.admin-case-detail p{margin:0;color:#42473f;font-size:12px;line-height:1.65;overflow-wrap:anywhere}
+.admin-case-detail dl{display:grid;gap:8px;margin:0}
+.admin-case-detail dl>div{display:grid;grid-template-columns:minmax(100px,.7fr) minmax(0,1.3fr);gap:12px;padding-bottom:7px;border-bottom:1px solid #f0ede7}
+.admin-case-detail dt{color:#77796f;font-size:10px;text-transform:capitalize}
+.admin-case-detail dd{margin:0;color:#30332e;font-size:11px;overflow-wrap:anywhere}
+.admin-case-product{display:flex;align-items:flex-start;gap:13px}
+.admin-case-product>img,.admin-case-product__placeholder{width:104px;height:104px;flex:0 0 104px;border:1px solid #e7e3dc;border-radius:7px;background:#f8f6f1;object-fit:cover}
+.admin-case-product__placeholder{display:grid;place-items:center;color:#9a9c92}
+.admin-case-product>div:last-child{display:grid;gap:6px;min-width:0}
+.admin-case-product strong{font-size:13px;line-height:1.4}
+.admin-case-product small{color:#686a63;font-size:10px;line-height:1.5;overflow-wrap:anywhere}
+.admin-case-evidence{display:grid;justify-items:start;gap:8px;color:#8e4e38;font-size:11px;font-weight:700;text-decoration:none}
+.admin-case-evidence img{width:min(100%,320px);max-height:300px;border:1px solid #e7e3dc;border-radius:7px;background:#f8f6f1;object-fit:contain}
+.admin-case-detail__footer{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.admin-case-detail__footer>div:first-child{display:grid;gap:4px}
+.admin-case-detail__footer small{color:#85877f;font-size:9px;overflow-wrap:anywhere}
+@media(max-width:700px){.admin-case-card__summary{align-items:flex-start;flex-direction:column}.admin-case-card__actions{justify-content:flex-start}.admin-case-detail{grid-template-columns:1fr;padding:12px}.admin-case-detail__footer{align-items:flex-start;flex-direction:column}.admin-case-detail dl>div{grid-template-columns:95px minmax(0,1fr)}}
