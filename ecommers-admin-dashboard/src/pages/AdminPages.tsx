@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Trash2, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -488,7 +488,104 @@ function Inventory() {
   return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Stock control</p><h2>Inventory</h2></div><button type="button" className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No inventory records" detail="Inventory records are created when products are configured for tracking." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Product</th><th>Variant</th><th>Quantity</th><th>Threshold</th><th>Updated</th><th>Adjust</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.product_name}</strong></td><td>{item.variant_name ?? 'Base product'}</td><td><strong className={item.low_stock_threshold !== null && item.quantity <= item.low_stock_threshold ? 'admin-low-stock' : ''}>{item.quantity}</strong></td><td>{item.low_stock_threshold ?? '—'}</td><td>{formatDate(item.updated_at)}</td><td>{editingId === item.id ? <form className="admin-inline-adjust" onSubmit={(event) => void saveAdjustment(event, item)}><label><span className="sr-only">New quantity</span><input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label><span className="sr-only">Adjustment reason</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reason" required /></label><button type="submit" className="admin-small-button" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button><button type="button" className="admin-small-button" onClick={() => setEditingId(null)}>Cancel</button></form> : <button type="button" className="admin-small-button" onClick={() => startAdjust(item)}>Adjust</button>}</td></tr>)}</tbody></table></div>}</section>
 }
 
-function Sellers() { const { push } = useToast(); const [items, setItems] = useState<AdminSeller[]>([]); const [status, setStatus] = useState('all'); const [error, setError] = useState<string | null>(null); const load = () => void listSellerApplications(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Seller applications could not be loaded.')); useEffect(load, [status]); useAutoRefresh(load); async function review(item: AdminSeller, next: AdminSeller['status']) { const reason = next === 'rejected' || next === 'suspended' ? window.prompt('Record a review reason', item.rejection_reason ?? '') : undefined; if ((next === 'rejected' || next === 'suspended') && reason === null) return; try { const result = await reviewSellerApplication(item.id, next, reason ?? undefined); const emailed = next === 'approved' ? (result as { email_sent?: boolean }).email_sent : undefined; push(next === 'approved' && !emailed ? 'Seller approved, but the approval email could not be sent.' : `Seller ${next}${emailed ? ' and approval email sent' : ''}.`, next === 'approved' && !emailed ? 'error' : 'success'); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Seller review failed.', 'error') } } return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Marketplace governance</p><h2>Seller applications</h2></div><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option><option value="all">All</option></select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No seller applications" detail="Change the filter to Pending to focus on applications awaiting review." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Shop</th><th>Contact</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.shop_name}</strong><small>{item.slug}<br />{item.description || 'No description'}</small></td><td>{item.contact_email ?? '-'}{item.phone && <small>{item.phone}</small>}<SellerDocumentLink path={item.document_path} /></td><td><em className={statusClass(item.status)}>{item.status}</em></td><td>{formatDate(item.created_at)}</td><td><div className="admin-action-row">{item.status === 'pending' && <><button className="admin-small-button" onClick={() => void review(item, 'approved')}>Approve</button><button className="admin-small-button admin-small-button--danger" onClick={() => void review(item, 'rejected')}>Reject</button></>}{item.status === 'approved' && <button className="admin-small-button admin-small-button--danger" onClick={() => void review(item, 'suspended')}>Suspend</button>}{item.status === 'suspended' && <button className="admin-small-button" onClick={() => void review(item, 'approved')}>Reactivate</button>}</div></td></tr>)}</tbody></table></div>}</section> }
+function Sellers() {
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminSeller[]>([])
+  const [status, setStatus] = useState('all')
+  const [error, setError] = useState<string | null>(null)
+  const [detailsId, setDetailsId] = useState<string | null>(null)
+  const [reasonTarget, setReasonTarget] = useState<{ item: AdminSeller; status: 'rejected' | 'suspended' } | null>(null)
+  const [reason, setReason] = useState('')
+  const [savingReview, setSavingReview] = useState(false)
+  const load = () => {
+    setError(null)
+    void listSellerApplications(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Seller applications could not be loaded.'))
+  }
+  useEffect(load, [status])
+  useAutoRefresh(load)
+
+  async function review(item: AdminSeller, next: AdminSeller['status'], reviewReason?: string) {
+    try {
+      setSavingReview(true)
+      const result = await reviewSellerApplication(item.id, next, reviewReason)
+      const emailed = next === 'approved' ? (result as { email_sent?: boolean }).email_sent : undefined
+      push(next === 'approved' && !emailed ? 'Seller approved, but the approval email could not be sent.' : `Seller ${next}${emailed ? ' and approval email sent' : ''}.`, next === 'approved' && !emailed ? 'error' : 'success')
+      setReasonTarget(null)
+      setReason('')
+      load()
+    } catch (cause) {
+      push(cause instanceof Error ? cause.message : 'Seller review failed.', 'error')
+    } finally {
+      setSavingReview(false)
+    }
+  }
+
+  function openReasonModal(item: AdminSeller, next: 'rejected' | 'suspended') {
+    setReasonTarget({ item, status: next })
+    setReason(item.rejection_reason ?? '')
+  }
+
+  function submitReason(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const clean = reason.trim()
+    if (clean.length < 3) {
+      push('Enter a review reason of at least 3 characters.', 'error')
+      return
+    }
+    if (clean.length > 1000) {
+      push('The review reason must be 1,000 characters or fewer.', 'error')
+      return
+    }
+    if (reasonTarget) void review(reasonTarget.item, reasonTarget.status, clean)
+  }
+
+  return <section className="admin-content">
+    <div className="admin-page-heading">
+      <div><p className="admin-kicker">Marketplace governance</p><h2>Seller applications</h2><p className="admin-copy">Review vendor contact, address and location details before approving applications.</p></div>
+      <select value={status} onChange={(event) => setStatus(event.target.value)}>
+        <option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option><option value="all">All</option>
+      </select>
+    </div>
+    {error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No seller applications" detail="Change the filter to Pending to focus on applications awaiting review." /> :
+      <div className="admin-table-wrap"><TableTools /><table className="admin-table">
+        <thead><tr><th>Shop</th><th>Contact</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
+        <tbody>{items.map((item) => <Fragment key={item.id}>
+          <tr>
+            <td><strong>{item.shop_name}</strong><small>{item.slug}<br />{item.description || 'No description'}</small></td>
+            <td>{item.contact_email ?? '-'}{item.phone && <small>{item.phone}</small>}<SellerDocumentLink path={item.document_path} /></td>
+            <td><em className={statusClass(item.status)}>{item.status}</em>{item.rejection_reason && <small>Review note: {item.rejection_reason}</small>}</td>
+            <td>{formatDate(item.created_at)}</td>
+            <td><div className="admin-action-row">
+              <button type="button" className="admin-small-button" onClick={() => setDetailsId(detailsId === item.id ? null : item.id)}>{detailsId === item.id ? 'Hide details' : 'Address & location'}</button>
+              {(item.status === 'pending' || item.status === 'rejected') && <button type="button" className="admin-small-button" onClick={() => void review(item, 'approved')}>Approve</button>}
+              {(item.status === 'pending' || item.status === 'rejected') && <button type="button" className="admin-small-button admin-small-button--danger" onClick={() => openReasonModal(item, 'rejected')}>{item.status === 'rejected' ? 'Update rejection' : 'Reject'}</button>}
+              {item.status === 'approved' && <button type="button" className="admin-small-button admin-small-button--danger" onClick={() => openReasonModal(item, 'suspended')}>Suspend</button>}
+              {item.status === 'suspended' && <button type="button" className="admin-small-button" onClick={() => void review(item, 'approved')}>Reactivate</button>}
+            </div></td>
+          </tr>
+          {detailsId === item.id && <tr className="admin-seller-details-row"><td colSpan={5}>
+            <div className="admin-seller-details">
+              <section><h4>Current Address</h4><p>{item.current_address || 'Not provided in this legacy application'}</p></section>
+              <section><h4>Complete Address</h4><p>{item.complete_address || 'Not provided in this legacy application'}</p></section>
+              <section><h4>Location Details</h4><p><strong>Area / map label:</strong> {item.shop_location_label || 'Not provided'}</p><p><strong>Coordinates:</strong> {item.shop_lat != null && item.shop_lng != null ? `${item.shop_lat}, ${item.shop_lng}` : 'Not captured'}</p>{item.shop_lat != null && item.shop_lng != null && <a href={`https://www.google.com/maps?q=${item.shop_lat},${item.shop_lng}`} target="_blank" rel="noreferrer">Open shop location in Google Maps</a>}</section>
+              <section><h4>Private Verification</h4><p>{item.document_path ? 'Private document uploaded. Open it using the secure document link above.' : 'No document on file.'}</p></section>
+            </div>
+          </td></tr>}
+        </Fragment>)}</tbody>
+      </table></div>}
+    {reasonTarget && <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingReview) { setReasonTarget(null); setReason('') } }}>
+      <section className="admin-modal admin-seller-review-modal" role="dialog" aria-modal="true" aria-labelledby="seller-review-title">
+        <div className="admin-panel-heading"><div><p className="admin-kicker">Vendor application review</p><h3 id="seller-review-title">{reasonTarget.status === 'rejected' ? 'Reject application' : 'Suspend vendor'}</h3></div><button type="button" className="admin-icon-button" aria-label="Close" disabled={savingReview} onClick={() => { setReasonTarget(null); setReason('') }}><X size={17}/></button></div>
+        <p className="admin-copy">{reasonTarget.item.shop_name} · The vendor will see this note and can use it to correct a rejected application.</p>
+        <form onSubmit={submitReason}>
+          <label htmlFor="seller-review-reason">Reason / correction notes <span>*</span></label>
+          <textarea id="seller-review-reason" value={reason} onChange={(event) => setReason(event.target.value)} required minLength={3} maxLength={1000} rows={5} placeholder="Explain what needs to be corrected…" />
+          <div className="admin-action-row"><button type="button" className="admin-button admin-button--outline" disabled={savingReview} onClick={() => { setReasonTarget(null); setReason('') }}>Cancel</button><button type="submit" className={reasonTarget.status === 'rejected' ? 'admin-button admin-button--danger' : 'admin-button'} disabled={savingReview || reason.trim().length < 3}>{savingReview ? 'Saving…' : reasonTarget.status === 'rejected' ? 'Reject application' : 'Confirm suspension'}</button></div>
+        </form>
+      </section>
+    </div>}
+  </section>
+}
 
 function formatCaseVariant(value: unknown): string {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return typeof value === 'string' ? value : ''
