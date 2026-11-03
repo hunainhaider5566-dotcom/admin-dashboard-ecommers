@@ -97,3 +97,7 @@
 .admin-inventory-add .admin-form-actions{justify-content:flex-end}
 .admin-inventory-add select,.admin-inventory-add input{width:100%;min-width:0}
 @media(max-width:650px){.admin-inventory-add{padding:14px}.admin-inventory-add .admin-form-actions{flex-wrap:wrap}.admin-inventory-add .admin-form-actions button{flex:1}}
+
+
+.admin-unhide-publish-choice{display:flex;align-items:center;gap:9px;margin:12px 0;padding:12px;border:1px solid var(--admin-line,#dedbd2);border-radius:8px;background:#f8f6f1;font-size:13px}
+.admin-unhide-publish-choice input{width:16px;height:16px;flex:0 0 16px}
