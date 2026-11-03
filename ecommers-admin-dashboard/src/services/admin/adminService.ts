@@ -229,7 +229,7 @@ export async function moderateProduct(id: string, status: Database['public']['Ta
 export async function listAdminProductDeletionRequests(): Promise<AdminProductDeletionRequest[]> {
   const { data, error } = await getSupabase().rpc('admin_list_product_deletion_requests')
   assertError(error)
-  return (data ?? []) as AdminProductDeletionRequest[]
+  return data ?? []
 }
 
 async function removeProductStorageFiles(productId: string) {
