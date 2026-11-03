@@ -15,7 +15,7 @@ export type AdminSeller = Database['public']['Tables']['seller_profiles']['Row']
 export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
 export type AdminCaseDetail = AdminCase & {
   order: Pick<Database['public']['Tables']['orders']['Row'], 'id' | 'order_number' | 'customer_name' | 'customer_phone' | 'customer_email' | 'shipping_address_snapshot' | 'total' | 'order_status' | 'created_at'> | null
-  order_item: Pick<Database['public']['Tables']['order_items']['Row'], 'id' | 'product_id' | 'product_name_snapshot' | 'product_image_url' | 'sku_snapshot' | 'variant_snapshot' | 'quantity' | 'unit_price' | 'line_total' | 'seller_name_snapshot'> | null
+  order_item: Pick<Database['public']['Tables']['order_items']['Row'], 'id' | 'product_id' | 'product_name_snapshot' | 'sku_snapshot' | 'variant_snapshot' | 'quantity' | 'unit_price' | 'line_total' | 'seller_name_snapshot'> | null
   product_image_url: string | null
   evidence_url: string | null
 }
@@ -531,7 +531,7 @@ export async function listMarketplaceCases(status = 'all'): Promise<AdminCaseDet
   const itemIds = [...new Set(cases.map((item) => item.order_item_id).filter((id): id is string => Boolean(id)))]
   const [ordersResult, itemsResult] = await Promise.all([
     client.from('orders').select('id, order_number, customer_name, customer_phone, customer_email, shipping_address_snapshot, total, order_status, created_at').in('id', orderIds),
-    itemIds.length ? client.from('order_items').select('id, product_id, product_name_snapshot, product_image_url, sku_snapshot, variant_snapshot, quantity, unit_price, line_total, seller_name_snapshot').in('id', itemIds) : Promise.resolve({ data: [], error: null }),
+    itemIds.length ? client.from('order_items').select('id, product_id, product_name_snapshot, sku_snapshot, variant_snapshot, quantity, unit_price, line_total, seller_name_snapshot').in('id', itemIds) : Promise.resolve({ data: [], error: null }),
   ])
   assertError(ordersResult.error); assertError(itemsResult.error)
   const orders = new Map((ordersResult.data ?? []).map((row) => [row.id, row]))
@@ -552,7 +552,7 @@ export async function listMarketplaceCases(status = 'all'): Promise<AdminCaseDet
       ...item,
       order: orders.get(item.order_id) ?? null,
       order_item: orderItem ?? null,
-      product_image_url: orderItem?.product_image_url ?? (orderItem?.product_id ? imageByProduct.get(orderItem.product_id) ?? null : null),
+      product_image_url: orderItem?.product_id ? imageByProduct.get(orderItem.product_id) ?? null : null,
       evidence_url: signed?.data?.signedUrl ?? null,
     }
   }))
