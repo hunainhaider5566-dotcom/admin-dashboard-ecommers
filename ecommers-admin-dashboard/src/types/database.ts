@@ -83,6 +83,11 @@ export interface Database {
       admin_list_product_deletion_requests: { Args: Record<string, never>; Returns: { id: string; product_id: string; product_name: string; product_image_url: string; seller_id: string; shop_name: string; reason: string; status: string; admin_note: string | null; created_at: string }[] }
       admin_delete_product: { Args: { p_product_id: string }; Returns: undefined }
       admin_review_product_deletion: { Args: { p_request_id: string; p_approve: boolean; p_admin_note?: string | null }; Returns: Json }
+      vendor_set_product_inventory: { Args: { p_product_id: string; p_variant_id: string | null; p_new_quantity: number; p_note: string }; Returns: ProductInventoryRow }
+      vendor_request_product_deletion: { Args: { p_product_id: string; p_reason: string }; Returns: Json }
+      admin_list_product_deletion_requests: { Args: Record<string, never>; Returns: { id: string; product_id: string; product_name: string; product_image_url: string; seller_id: string; shop_name: string; reason: string; status: string; admin_note: string | null; created_at: string }[] }
+      admin_delete_product: { Args: { p_product_id: string }; Returns: undefined }
+      admin_review_product_deletion: { Args: { p_request_id: string; p_approve: boolean; p_admin_note?: string | null }; Returns: Json }
       vendor_update_product: { Args: { p_product_id: string; p_category_id: string | null; p_name: string; p_slug: string; p_sku: string | null; p_short_description: string; p_description: string; p_price: number; p_supplier_cost: number | null; p_fulfillment_expense: number; p_minimum_profit: number; p_discount_percent?: number; p_weight_grams?: number | null; p_specifications?: Json; p_dimensions?: Json; p_seo_title?: string | null; p_seo_description?: string | null }; Returns: ProductRow }
       vendor_order_items: { Args: Record<string, never>; Returns: VendorOrderItemRow[] }
       vendor_update_order_item: { Args: { p_item_id: string; p_status: string; p_tracking_number?: string | null; p_tracking_url?: string | null; p_vendor_note?: string | null }; Returns: boolean }
