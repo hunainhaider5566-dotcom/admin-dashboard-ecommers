@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Globe, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Trash2, Users, X } from 'lucide-react'
+import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, FolderTree, Globe, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Trash2, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useToast } from '../contexts/ToastContext'
 import { adjustInventory, decideMarketplaceCase, deleteAdminHero, deleteAdminPromotion, deleteProductVariant, getAdminOrderDetail, getAdminProductEditor, getAdminStoreSettings, getAdminSummary, getVendorDocumentSignedUrl, listAdminCategories, listAdminAccountSuspensions, listAdminCustomers, listAdminHeroes, listAdminInventory, listAdminNotifications, listAdminOrders, listAdminOrderVendors, listAdminVendorPickups, markAdminVendorPickedUp, listAdminProducts, listAdminPromotions, listAdminSupportTickets, listAuditLogs, listMarketplaceCases, listSellerApplications, markAdminNotificationRead, markAllAdminNotificationsRead, moderateProduct, reviewSellerApplication, saveAdminHero, saveAdminPromotion, saveCategory, saveProduct, saveProductVariant, saveAdminProductInventory, setAdminAccountSuspension, updateAdminStoreSettings, updateAdminSupportTicket, updateOrder, updateProductStatus, uploadAdditionalProductImage, uploadPublicMedia, type AdminCaseDetail, type AdminCategory, type AdminAccountSuspension, type AdminCustomer, type AdminHero, type AdminInventory, type AdminNotification, type AdminOrder, type AdminOrderVendor, type AdminProduct, type AdminPromotion, type AdminSeller, type AdminStoreSettings, type AdminSummary, type AdminSupportInboxTicket, type AdminVariant } from '../services/admin/adminService'
@@ -469,15 +469,32 @@ function OrderDetailPage({ orderId }: { orderId: string }) {
 function Inventory() {
   const { push } = useToast()
   const [items, setItems] = useState<AdminInventory[]>([])
+  const [products, setProducts] = useState<AdminProduct[]>([])
+  const [variantOptions, setVariantOptions] = useState<AdminVariant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [quantity, setQuantity] = useState('')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
+  const [addOpen, setAddOpen] = useState(false)
+  const [selectedProductId, setSelectedProductId] = useState('')
+  const [selectedVariantId, setSelectedVariantId] = useState('')
+  const [newQuantity, setNewQuantity] = useState('0')
+  const [newNote, setNewNote] = useState('Initial stock entry')
   const load = (quiet = false) => { if (!quiet) setLoading(true); setError(null); void listAdminInventory().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Inventory could not be loaded.')).finally(() => { if (!quiet) setLoading(false) }) }
   useEffect(load, [])
   useAutoRefresh(load)
+  useEffect(() => {
+    void listAdminProducts().then(setProducts).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Products could not be loaded for inventory.'))
+  }, [])
+  useEffect(() => {
+    let active = true
+    setVariantOptions([])
+    setSelectedVariantId('')
+    if (selectedProductId) void getAdminProductEditor(selectedProductId).then((detail) => { if (active) setVariantOptions((detail?.variants ?? []).filter((variant) => variant.is_active)) }).catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Product variants could not be loaded.') })
+    return () => { active = false }
+  }, [selectedProductId])
   function startAdjust(item: AdminInventory) { setEditingId(item.id); setQuantity(String(item.quantity)); setNote('') }
   async function saveAdjustment(event: FormEvent<HTMLFormElement>, item: AdminInventory) {
     event.preventDefault()
@@ -489,9 +506,40 @@ function Inventory() {
     catch (cause) { setError(cause instanceof Error ? cause.message : 'Inventory update failed.') }
     finally { setSaving(false) }
   }
-  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Stock control</p><h2>Inventory</h2></div><button type="button" className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div>{error ? <ErrorState message={error} retry={load} /> : loading ? <Loading /> : items.length === 0 ? <Empty title="No inventory records" detail="Inventory records are created when products are configured for tracking." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Product</th><th>Variant</th><th>Quantity</th><th>Threshold</th><th>Updated</th><th>Adjust</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.product_name}</strong></td><td>{item.variant_name ?? 'Base product'}</td><td><strong className={item.low_stock_threshold !== null && item.quantity <= item.low_stock_threshold ? 'admin-low-stock' : ''}>{item.quantity}</strong></td><td>{item.low_stock_threshold ?? '—'}</td><td>{formatDate(item.updated_at)}</td><td>{editingId === item.id ? <form className="admin-inline-adjust" onSubmit={(event) => void saveAdjustment(event, item)}><label><span className="sr-only">New quantity</span><input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label><label><span className="sr-only">Adjustment reason</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reason" required /></label><button type="submit" className="admin-small-button" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button><button type="button" className="admin-small-button" onClick={() => setEditingId(null)}>Cancel</button></form> : <button type="button" className="admin-small-button" onClick={() => startAdjust(item)}>Adjust</button>}</td></tr>)}</tbody></table></div>}</section>
+  async function addOrUpdateStock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const value = Number(newQuantity)
+    if (!selectedProductId) { setError('Select a product first.'); return }
+    if (variantOptions.length > 0 && !selectedVariantId) { setError('Select the variant whose stock you want to manage.'); return }
+    if (!Number.isInteger(value) || value < 0) { setError('Quantity must be a whole number of zero or more.'); return }
+    if (!newNote.trim()) { setError('Enter a reason for this stock entry.'); return }
+    setSaving(true); setError(null)
+    try {
+      await saveAdminProductInventory(selectedProductId, variantOptions.length ? selectedVariantId : null, value, newNote.trim())
+      const product = products.find((row) => row.id === selectedProductId)
+      push(`Stock saved for ${product?.name ?? 'product'}.`)
+      setAddOpen(false); setSelectedProductId(''); setSelectedVariantId(''); setNewQuantity('0'); setNewNote('Initial stock entry')
+      load()
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Stock could not be saved.') }
+    finally { setSaving(false) }
+  }
+  return <section className="admin-content">
+    <div className="admin-page-heading"><div><p className="admin-kicker">Stock control</p><h2>Inventory</h2><p className="admin-copy">Add stock records or update quantities for each individual product variant.</p></div><div className="admin-action-row"><button type="button" className="admin-button" onClick={() => setAddOpen((value) => !value)}><Plus size={15}/>{addOpen ? 'Close stock form' : 'Add / update stock'}</button><button type="button" className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15} /> Refresh</button></div></div>
+    {addOpen && <form className="admin-panel admin-form admin-inventory-add" onSubmit={(event) => void addOrUpdateStock(event)}>
+      <div className="admin-panel-heading"><div><p className="admin-kicker">Inventory entry</p><h3>Add or update product stock</h3><p className="admin-copy">Choose a product and, when it has options, select the exact variant. Saving enables inventory tracking for that product.</p></div></div>
+      <div className="admin-form-grid">
+        <label className="admin-form-span">Product<select required value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)}><option value="">Select product</option>{products.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label>
+        {variantOptions.length > 0 && <label className="admin-form-span">Variant<select required value={selectedVariantId} onChange={(event) => setSelectedVariantId(event.target.value)}><option value="">Select variant</option>{variantOptions.map((variant) => <option key={variant.id} value={variant.id}>{variant.option_label}: {variant.option_value}{variant.sku ? ` · ${variant.sku}` : ''}</option>)}</select></label>}
+        <label>Available quantity<input type="number" min="0" step="1" required value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)}/></label>
+        <label className="admin-form-span">Reason<input required value={newNote} onChange={(event) => setNewNote(event.target.value)} placeholder="e.g. Initial stock / supplier restock"/></label>
+      </div>
+      <div className="admin-form-actions"><button type="button" className="admin-button admin-button--outline" disabled={saving} onClick={() => setAddOpen(false)}>Cancel</button><button type="submit" className="admin-button" disabled={saving || !selectedProductId}>{saving ? 'Saving…' : 'Save stock'}</button></div>
+    </form>}
+    {error && <ErrorState message={error} retry={load}/>}
+    {loading ? <Loading/> : items.length === 0 ? <Empty title="No inventory records" detail="Use Add / update stock to create the first base-product or variant stock record." action={<button type="button" className="admin-button" onClick={() => setAddOpen(true)}><Plus size={15}/> Add inventory</button>}/> :
+      <div className="admin-table-wrap"><TableTools/><table className="admin-table"><thead><tr><th>Product</th><th>Variant</th><th>Quantity</th><th>Threshold</th><th>Updated</th><th>Adjust</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.product_name}</strong></td><td>{item.variant_name ?? 'Base product'}</td><td><strong className={item.low_stock_threshold !== null && item.quantity <= item.low_stock_threshold ? 'admin-low-stock' : ''}>{item.quantity}</strong></td><td>{item.low_stock_threshold ?? '—'}</td><td>{formatDate(item.updated_at)}</td><td>{editingId === item.id ? <form className="admin-inline-adjust" onSubmit={(event) => void saveAdjustment(event, item)}><label><span className="sr-only">New quantity</span><input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)}/></label><label><span className="sr-only">Adjustment reason</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reason" required/></label><button type="submit" className="admin-small-button" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button><button type="button" className="admin-small-button" disabled={saving} onClick={() => setEditingId(null)}>Cancel</button></form> : <button type="button" className="admin-small-button" onClick={() => startAdjust(item)}>Adjust</button>}</td></tr>)}</tbody></table></div>}
+  </section>
 }
-
 function Sellers() {
   const { push } = useToast()
   const [items, setItems] = useState<AdminSeller[]>([])
