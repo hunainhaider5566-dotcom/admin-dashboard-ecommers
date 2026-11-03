@@ -414,6 +414,23 @@ export async function adjustInventory(id: string, quantity: number, note: string
   assertError(error)
 }
 
+
+export async function saveAdminProductInventory(productId: string, variantId: string | null, quantity: number) {
+  if (!Number.isInteger(quantity) || quantity < 0) throw new Error('Stock must be a whole number of zero or more.')
+  const client = getSupabase()
+  let query = client.from('product_inventory').select('id').eq('product_id', productId)
+  query = variantId ? query.eq('variant_id', variantId) : query.is('variant_id', null)
+  const { data: existing, error: lookupError } = await query.maybeSingle()
+  assertError(lookupError)
+  if (existing?.id) {
+    const { error } = await client.rpc('admin_adjust_inventory', { p_inventory_id: existing.id, p_new_quantity: quantity, p_note: 'Product editor stock update' })
+    assertError(error)
+    return
+  }
+  const { error } = await client.from('product_inventory').insert({ product_id: productId, variant_id: variantId, quantity, low_stock_threshold: 5 })
+  assertError(error)
+}
+
 export async function listAdminCustomers(): Promise<AdminCustomer[]> {
   const { data, error } = await getSupabase().rpc('admin_customer_summary')
   assertError(error)
