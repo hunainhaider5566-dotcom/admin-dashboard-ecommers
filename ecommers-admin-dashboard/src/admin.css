@@ -74,3 +74,17 @@
 .admin-case-detail__evidence img{display:block;max-width:min(100%,420px);max-height:420px;object-fit:contain;border:1px solid var(--admin-line,#dedbd2);border-radius:10px;background:#f4f2ed}
 .admin-case-detail__evidence span{font-size:12px;font-weight:700}
 @media(max-width:700px){.admin-case-detail{padding:12px}.admin-case-detail__grid{grid-template-columns:1fr}.admin-case-detail__reason,.admin-case-detail__evidence{grid-column:auto}.admin-case-detail__product{flex-direction:column}.admin-case-detail__product>img{width:88px;height:88px;flex-basis:88px}}
+
+
+/* Vendor application review and address details */
+.admin-seller-details-row>td{padding:0!important;background:#f7f6f2}
+.admin-seller-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:16px}
+.admin-seller-details>section{min-width:0;padding:14px;border:1px solid #e4e0d7;border-radius:8px;background:#fff}
+.admin-seller-details h4{margin:0 0 8px;color:#77786f;font-size:11px;letter-spacing:.08em;text-transform:uppercase}
+.admin-seller-details p{margin:5px 0;color:#30332e;font-size:13px;line-height:1.55;overflow-wrap:anywhere;white-space:pre-wrap}
+.admin-seller-details a{display:inline-block;margin-top:6px;color:#8b452e;font-size:12px;font-weight:700;text-decoration:underline}
+.admin-seller-review-modal form{display:grid;gap:10px}
+.admin-seller-review-modal form>label{color:#686a63;font-size:12px;font-weight:700}
+.admin-seller-review-modal textarea{min-height:120px}
+.admin-seller-review-modal .admin-action-row{justify-content:flex-end;margin-top:8px}
+@media(max-width:650px){.admin-seller-details{grid-template-columns:1fr;padding:10px}.admin-seller-review-modal{padding:16px}.admin-seller-review-modal .admin-action-row{flex-wrap:wrap}.admin-seller-review-modal .admin-action-row button{flex:1}}
