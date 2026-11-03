@@ -492,7 +492,7 @@ function Inventory() {
     let active = true
     setVariantOptions([])
     setSelectedVariantId('')
-    if (selectedProductId) void getAdminProductEditor(selectedProductId).then((detail) => { if (active) setVariantOptions((detail?.variants ?? []).filter((variant) => variant.is_active)) }).catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Product variants could not be loaded.') })
+    if (selectedProductId) void getAdminProductEditor(selectedProductId).then((detail) => { if (active) setVariantOptions(detail?.variants ?? []) }).catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Product variants could not be loaded.') })
     return () => { active = false }
   }, [selectedProductId])
   function startAdjust(item: AdminInventory) { setEditingId(item.id); setQuantity(String(item.quantity)); setNote('') }
