@@ -157,7 +157,7 @@ export async function saveProduct(input: Database['public']['Tables']['products'
 export async function getAdminProductEditor(id: string) {
   const client = getSupabase()
   const [products, variants, images, inventory] = await Promise.all([
-    client.rpc('admin_list_products', { p_search: '' }),
+    client.rpc('admin_get_product_by_id', { p_product_id: id }),
     client.from('product_variants').select('id, product_id, option_label, option_value, sku, price_override, attributes, is_active, sort_order, created_at, updated_at').eq('product_id', id).order('sort_order').limit(100),
     client.from('product_images').select('id, product_id, image_url, storage_path, alt_text, sort_order, is_primary, created_at').eq('product_id', id).order('sort_order').limit(100),
     client.from('product_inventory').select('id, variant_id, quantity, low_stock_threshold, updated_at').eq('product_id', id).limit(200),
