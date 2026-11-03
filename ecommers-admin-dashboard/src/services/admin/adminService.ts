@@ -12,6 +12,7 @@ export type AdminCustomer = Database['public']['Functions']['admin_customer_summ
 export type AdminAccountSuspension = Database['public']['Functions']['admin_account_suspensions']['Returns'][number]
 export type AdminVariant = Database['public']['Tables']['product_variants']['Row']
 export type AdminSeller = Database['public']['Tables']['seller_profiles']['Row']
+export type AdminProductDeletionRequest = { id: string; product_id: string; product_name: string; product_image_url: string | null; seller_id: string; shop_name: string; reason: string; status: 'pending' | 'approved' | 'rejected'; admin_note: string | null; created_at: string }
 export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
 export type AdminCaseDetail = AdminCase & {
   order: Pick<Database['public']['Tables']['orders']['Row'], 'id' | 'order_number' | 'customer_name' | 'customer_phone' | 'customer_email' | 'shipping_address_snapshot' | 'total' | 'order_status' | 'created_at'> | null
@@ -83,12 +84,13 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
     client.from('categories').select('id, name').limit(500),
     client.from('product_inventory').select('product_id, quantity').in('product_id', productIds).limit(1000),
     client.from('product_images').select('product_id, image_url, storage_path, is_primary, sort_order').in('product_id', productIds).order('sort_order').limit(1000),
-    client.from('seller_profiles').select('id, shop_name').limit(1000),
+    client.from('seller_profiles').select('id, shop_name, user_id').limit(1000),
   ])
   assertError(categoriesResult.error); assertError(inventoryResult.error); assertError(imagesResult.error); assertError(sellersResult.error)
 
   const categoryNames = new Map((categoriesResult.data ?? []).map((category) => [category.id, category.name]))
   const sellerNames = new Map((sellersResult.data ?? []).map((seller) => [seller.id, seller.shop_name]))
+  const sellerUserIds = new Map((sellersResult.data ?? []).map((seller) => [seller.id, seller.user_id]))
   const inventoryTotals = new Map<string, number>()
   for (const row of inventoryResult.data ?? []) {
     inventoryTotals.set(row.product_id, (inventoryTotals.get(row.product_id) ?? 0) + (row.quantity ?? 0))
@@ -105,7 +107,8 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
     const primary = images.find((image) => image.is_primary) ?? images[0]
     let imageUrl = primary?.image_url ?? null
     if (!imageUrl && primary?.storage_path) {
-      if (row.publication_status === 'published') imageUrl = client.storage.from('product-images').getPublicUrl(primary.storage_path).data.publicUrl
+      if (row.seller_id && primary.storage_path.startsWith(`${sellerUserIds.get(row.seller_id)}/${row.id}/`)) imageUrl = client.storage.from('product-images').getPublicUrl(primary.storage_path).data.publicUrl
+      else if (row.publication_status === 'published') imageUrl = client.storage.from('product-images').getPublicUrl(primary.storage_path).data.publicUrl
       else {
         const signed = await client.storage.from('product-drafts').createSignedUrl(primary.storage_path, 600)
         imageUrl = signed.data?.signedUrl ?? null
@@ -163,14 +166,15 @@ export async function getAdminProductEditor(id: string) {
   const productRow = (products.data ?? []).find((row) => row.id === id)
   if (!productRow) return null
   const [seller, category] = await Promise.all([
-    productRow.seller_id ? client.from('seller_profiles').select('id, shop_name, slug, status').eq('id', productRow.seller_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    productRow.seller_id ? client.from('seller_profiles').select('id, shop_name, slug, status, user_id').eq('id', productRow.seller_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
     productRow.category_id ? client.from('categories').select('id, name, slug').eq('id', productRow.category_id).maybeSingle() : Promise.resolve({ data: null, error: null }),
   ])
   assertError(seller.error); assertError(category.error)
   const mappedImages = await Promise.all((images.data ?? []).map(async (image) => {
     if (image.image_url) return { ...image, display_url: image.image_url }
     if (!image.storage_path) return { ...image, display_url: null }
-    const bucket = productRow.publication_status === 'published' ? 'product-images' : 'product-drafts'
+    const vendorPath = Boolean(seller.data?.user_id && image.storage_path.startsWith(`${seller.data.user_id}/${id}/`))
+    const bucket = vendorPath || productRow.publication_status === 'published' ? 'product-images' : 'product-drafts'
     if (bucket === 'product-images') return { ...image, display_url: client.storage.from(bucket).getPublicUrl(image.storage_path).data.publicUrl }
     const signed = await client.storage.from(bucket).createSignedUrl(image.storage_path, 600)
     return { ...image, display_url: signed.data?.signedUrl ?? null }
@@ -219,6 +223,42 @@ async function publishProductImages(productId: string) {
 
 export async function moderateProduct(id: string, status: Database['public']['Tables']['products']['Row']['moderation_status'], reason?: string) {
   const { error } = await getSupabase().rpc('admin_moderate_product', { p_product_id: id, p_status: status, p_reason: reason ?? null })
+  assertError(error)
+}
+
+export async function listAdminProductDeletionRequests(): Promise<AdminProductDeletionRequest[]> {
+  const { data, error } = await getSupabase().rpc('admin_list_product_deletion_requests')
+  assertError(error)
+  return (data ?? []) as AdminProductDeletionRequest[]
+}
+
+async function removeProductStorageFiles(productId: string) {
+  const client = getSupabase()
+  const { data: images, error } = await client.from('product_images').select('storage_path').eq('product_id', productId)
+  assertError(error)
+  const publicPaths = (images ?? []).filter((row) => row.storage_path && row.storage_path.includes(`/${productId}/`)).map((row) => row.storage_path!)
+  const draftPaths = (images ?? []).filter((row) => row.storage_path && !row.storage_path.includes(`/${productId}/`)).map((row) => row.storage_path!)
+  if (publicPaths.length) assertError((await client.storage.from('product-images').remove(publicPaths)).error)
+  if (draftPaths.length) assertError((await client.storage.from('product-drafts').remove(draftPaths)).error)
+}
+
+export async function deleteAdminProductPermanently(productId: string): Promise<void> {
+  await removeProductStorageFiles(productId)
+  const { error } = await getSupabase().rpc('admin_delete_product', { p_product_id: productId })
+  assertError(error)
+}
+
+export async function reviewAdminProductDeletion(requestId: string, approve: boolean, note?: string): Promise<void> {
+  if (!approve && (note ?? '').trim().length < 3) throw new Error('A reason is required when declining a deletion request.')
+  if (approve) {
+    const requests = await listAdminProductDeletionRequests()
+    const request = requests.find((item) => item.id === requestId)
+    if (!request) throw new Error('Deletion request was not found.')
+    await removeProductStorageFiles(request.product_id)
+  }
+  const { error } = await getSupabase().rpc('admin_review_product_deletion', {
+    p_request_id: requestId, p_approve: approve, p_admin_note: note?.trim() || null,
+  })
   assertError(error)
 }
 
