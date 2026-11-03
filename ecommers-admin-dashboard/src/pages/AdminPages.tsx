@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Archive, ArrowLeft, BarChart3, Bell, Boxes, Check, CheckCheck, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Edit2, Eye, EyeOff, FolderTree, Image as ImageIcon, Info, LayoutDashboard, LogOut, Menu, MessageSquare, Package, Plus, Printer, RefreshCw, Search, Settings, ShieldAlert, Store, Tag, Trash2, Users, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -549,7 +549,7 @@ function Sellers() {
     {error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No seller applications" detail="Change the filter to Pending to focus on applications awaiting review." /> :
       <div className="admin-table-wrap"><TableTools /><table className="admin-table">
         <thead><tr><th>Shop</th><th>Contact</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
-        <tbody>{items.map((item) => <React.Fragment key={item.id}>
+        <tbody>{items.map((item) => <Fragment key={item.id}>
           <tr>
             <td><strong>{item.shop_name}</strong><small>{item.slug}<br />{item.description || 'No description'}</small></td>
             <td>{item.contact_email ?? '-'}{item.phone && <small>{item.phone}</small>}<SellerDocumentLink path={item.document_path} /></td>
@@ -571,7 +571,7 @@ function Sellers() {
               <section><h4>Private Verification</h4><p>{item.document_path ? 'Private document uploaded. Open it using the secure document link above.' : 'No document on file.'}</p></section>
             </div>
           </td></tr>}
-        </React.Fragment>)}</tbody>
+        </Fragment>)}</tbody>
       </table></div>}
     {reasonTarget && <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingReview) { setReasonTarget(null); setReason('') } }}>
       <section className="admin-modal admin-seller-review-modal" role="dialog" aria-modal="true" aria-labelledby="seller-review-title">
