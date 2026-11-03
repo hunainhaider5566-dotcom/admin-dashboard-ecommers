@@ -236,10 +236,16 @@ async function removeProductStorageFiles(productId: string) {
   const client = getSupabase()
   const { data: images, error } = await client.from('product_images').select('storage_path').eq('product_id', productId)
   assertError(error)
-  const publicPaths = (images ?? []).filter((row) => row.storage_path && row.storage_path.includes(`/${productId}/`)).map((row) => row.storage_path!)
-  const draftPaths = (images ?? []).filter((row) => row.storage_path && !row.storage_path.includes(`/${productId}/`)).map((row) => row.storage_path!)
-  if (publicPaths.length) assertError((await client.storage.from('product-images').remove(publicPaths)).error)
-  if (draftPaths.length) assertError((await client.storage.from('product-drafts').remove(draftPaths)).error)
+  const paths = [...new Set((images ?? []).map((row) => row.storage_path).filter((path): path is string => Boolean(path)))]
+  if (!paths.length) return
+  // Vendor uploads live in product-images; admin draft uploads live in product-drafts.
+  // Remove from both buckets so deletion is independent of the product's current publication state.
+  const [publicRemoval, draftRemoval] = await Promise.all([
+    client.storage.from('product-images').remove(paths),
+    client.storage.from('product-drafts').remove(paths),
+  ])
+  assertError(publicRemoval.error)
+  assertError(draftRemoval.error)
 }
 
 export async function deleteAdminProductPermanently(productId: string): Promise<void> {
