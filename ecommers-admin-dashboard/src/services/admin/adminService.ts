@@ -125,7 +125,7 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
 }
 
 export async function listAdminCategories(): Promise<AdminCategory[]> {
-  const { data, error } = await getSupabase().from('categories').select('id, parent_id, name, slug, description, eyebrow, image_url, is_active, is_coming_soon, sort_order, seo_title, seo_description, created_at, updated_at').order('sort_order').order('name').limit(200)
+  const { data, error } = await getSupabase().from('categories').select('id, parent_id, name, slug, description, eyebrow, image_url, is_active, is_coming_soon, is_food_category, sort_order, seo_title, seo_description, created_at, updated_at').order('sort_order').order('name').limit(200)
   assertError(error)
   return (data ?? []) as AdminCategory[]
 }
