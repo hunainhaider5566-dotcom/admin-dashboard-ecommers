@@ -490,7 +490,115 @@ function Inventory() {
 
 function Sellers() { const { push } = useToast(); const [items, setItems] = useState<AdminSeller[]>([]); const [status, setStatus] = useState('all'); const [error, setError] = useState<string | null>(null); const load = () => void listSellerApplications(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Seller applications could not be loaded.')); useEffect(load, [status]); useAutoRefresh(load); async function review(item: AdminSeller, next: AdminSeller['status']) { const reason = next === 'rejected' || next === 'suspended' ? window.prompt('Record a review reason', item.rejection_reason ?? '') : undefined; if ((next === 'rejected' || next === 'suspended') && reason === null) return; try { const result = await reviewSellerApplication(item.id, next, reason ?? undefined); const emailed = next === 'approved' ? (result as { email_sent?: boolean }).email_sent : undefined; push(next === 'approved' && !emailed ? 'Seller approved, but the approval email could not be sent.' : `Seller ${next}${emailed ? ' and approval email sent' : ''}.`, next === 'approved' && !emailed ? 'error' : 'success'); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Seller review failed.', 'error') } } return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Marketplace governance</p><h2>Seller applications</h2></div><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="suspended">Suspended</option><option value="all">All</option></select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No seller applications" detail="Change the filter to Pending to focus on applications awaiting review." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Shop</th><th>Contact</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.shop_name}</strong><small>{item.slug}<br />{item.description || 'No description'}</small></td><td>{item.contact_email ?? '-'}{item.phone && <small>{item.phone}</small>}<SellerDocumentLink path={item.document_path} /></td><td><em className={statusClass(item.status)}>{item.status}</em></td><td>{formatDate(item.created_at)}</td><td><div className="admin-action-row">{item.status === 'pending' && <><button className="admin-small-button" onClick={() => void review(item, 'approved')}>Approve</button><button className="admin-small-button admin-small-button--danger" onClick={() => void review(item, 'rejected')}>Reject</button></>}{item.status === 'approved' && <button className="admin-small-button admin-small-button--danger" onClick={() => void review(item, 'suspended')}>Suspend</button>}{item.status === 'suspended' && <button className="admin-small-button" onClick={() => void review(item, 'approved')}>Reactivate</button>}</div></td></tr>)}</tbody></table></div>}</section> }
 
-function Cases() { const { push } = useToast(); const [items, setItems] = useState<AdminCase[]>([]); const [status, setStatus] = useState('all'); const [error, setError] = useState<string | null>(null); const load = () => void listMarketplaceCases(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Marketplace cases could not be loaded.')); useEffect(load, [status]); useAutoRefresh(load); async function decide(item: AdminCase, next: AdminCase['status']) { const decision = window.prompt('Record the administrative decision', item.admin_decision ?? ''); if (!decision) return; try { await decideMarketplaceCase(item.id, next, decision); push('Case decision recorded.'); load() } catch (cause) { push(cause instanceof Error ? cause.message : 'Case decision failed.', 'error') } } return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Returns, refunds and complaints</p><h2>Marketplace cases</h2></div><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All statuses</option><option value="open">Open</option><option value="seller_responded">Seller responded</option><option value="under_review">Under review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="resolved">Resolved</option></select></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No cases" detail="Buyer returns, refund requests and complaints will appear here once the marketplace workflow is enabled." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Type</th><th>Reason</th><th>Status</th><th>Opened</th><th>Decision</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><em className={statusClass(item.case_type)}>{item.case_type}</em></td><td>{item.reason}</td><td><em className={statusClass(item.status)}>{item.status}</em></td><td>{formatDate(item.created_at)}</td><td>{!['resolved', 'rejected'].includes(item.status) && <div className="admin-action-row"><button className="admin-small-button" onClick={() => void decide(item, 'approved')}>Approve</button><button className="admin-small-button" onClick={() => void decide(item, 'rejected')}>Reject</button></div>}{item.admin_decision && <small>{item.admin_decision}</small>}</td></tr>)}</tbody></table></div>}</section> }
+function caseDetailText(value: unknown): string {
+  if (value === null || value === undefined || value === '') return 'Not provided'
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map((entry) => caseDetailText(entry)).join(' · ')
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, entry]) => entry !== null && entry !== undefined && entry !== '')
+    return entries.map(([key, entry]) => key.replace(/_/g, ' ') + ': ' + caseDetailText(entry)).join(' · ') || 'No details'
+  }
+  return 'Not provided'
+}
+
+function Cases() {
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminCase[]>([])
+  const [status, setStatus] = useState('all')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const load = () => {
+    setError(null)
+    void listMarketplaceCases(status).then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Marketplace cases could not be loaded.'))
+  }
+  useEffect(load, [status])
+  useAutoRefresh(load)
+  async function decide(item: AdminCase, next: AdminCase['status']) {
+    const decision = window.prompt('Record the administrative decision', item.admin_decision ?? '')
+    if (!decision?.trim()) return
+    try {
+      await decideMarketplaceCase(item.id, next, decision.trim())
+      push('Case decision recorded.')
+      load()
+    } catch (cause) {
+      push(cause instanceof Error ? cause.message : 'Case decision failed.', 'error')
+    }
+  }
+  return <section className="admin-content">
+    <div className="admin-page-heading">
+      <div><p className="admin-kicker">Returns, refunds and complaints</p><h2>Marketplace cases</h2></div>
+      <select value={status} onChange={(event) => setStatus(event.target.value)}>
+        <option value="all">All statuses</option><option value="open">Open</option><option value="seller_responded">Seller responded</option><option value="under_review">Under review</option><option value="approved">Approved</option><option value="rejected">Rejected</option><option value="resolved">Resolved</option>
+      </select>
+    </div>
+    {error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No cases" detail="Buyer returns, refund requests and complaints will appear here once submitted." /> : (
+      <div className="admin-case-list">
+        {items.map((item) => {
+          const open = expandedId === item.id
+          const order = item.order
+          const product = item.order_item
+          const shipping = order?.shipping_address_snapshot && typeof order.shipping_address_snapshot === 'object' && !Array.isArray(order.shipping_address_snapshot)
+            ? order.shipping_address_snapshot as Record<string, unknown>
+            : null
+          return <article className="admin-case-card" key={item.id}>
+            <div className="admin-case-card__summary">
+              <div className="admin-case-card__identity">
+                <span className={statusClass(item.case_type)}>{item.case_type}</span>
+                <strong>{product?.product_name_snapshot ?? (item.order_item_id ? 'Product details unavailable' : 'Whole order')}</strong>
+                <small>{order?.order_number ?? item.order_id} · {formatDate(item.created_at)}</small>
+              </div>
+              <div className="admin-case-card__actions">
+                <span className={statusClass(item.status)}>{item.status.replace(/_/g, ' ')}</span>
+                <button type="button" className="admin-small-button" onClick={() => setExpandedId(open ? null : item.id)}>{open ? 'Hide details' : 'View full case'}</button>
+              </div>
+            </div>
+            {open && <div className="admin-case-detail">
+              <section>
+                <h3>Customer & order</h3>
+                <dl>
+                  <div><dt>Order number</dt><dd>{order?.order_number ?? item.order_id}</dd></div>
+                  <div><dt>Customer</dt><dd>{order?.customer_name ?? 'Unavailable'}</dd></div>
+                  <div><dt>Phone</dt><dd>{order?.customer_phone ?? 'Unavailable'}</dd></div>
+                  <div><dt>Email</dt><dd>{order?.customer_email ?? 'Not provided'}</dd></div>
+                  <div><dt>Delivery address</dt><dd>{shipping ? [shipping.address_line_1, shipping.address_line_2, shipping.city, shipping.province, shipping.postal_code].filter(Boolean).join(', ') : 'Unavailable'}</dd></div>
+                  <div><dt>Order total</dt><dd>{order ? formatMoney(order.total) : 'Unavailable'}</dd></div>
+                </dl>
+              </section>
+              <section>
+                <h3>Reported product</h3>
+                {product ? <div className="admin-case-product">
+                  {item.product_image_url ? <img src={item.product_image_url} alt={product.product_name_snapshot} /> : <div className="admin-case-product__placeholder"><ImageIcon size={22} /></div>}
+                  <div>
+                    <strong>{product.product_name_snapshot}</strong>
+                    <small>SKU: {product.sku_snapshot ?? 'Not available'}</small>
+                    <small>Variant: {caseDetailText(product.variant_snapshot)}</small>
+                    <small>Quantity: {product.quantity}</small>
+                    <small>Unit price: {formatMoney(product.unit_price)}</small>
+                    <small>Line total: {formatMoney(product.line_total)}</small>
+                  </div>
+                </div> : <p>This case was opened against the whole order; no individual order item was selected.</p>}
+              </section>
+              <section className="admin-case-reason">
+                <h3>Customer's reason</h3>
+                <p>{item.reason || 'No reason was provided.'}</p>
+              </section>
+              <section>
+                <h3>Product evidence image</h3>
+                {item.evidence_url ? <a className="admin-case-evidence" href={item.evidence_url} target="_blank" rel="noreferrer"><img src={item.evidence_url} alt="Customer-submitted product evidence" /><span>Open full-size evidence image</span></a> : <p>{item.evidence_path ? 'Evidence exists but could not be opened. Check storage access permissions.' : 'No evidence image was attached to this case.'}</p>}
+              </section>
+              {item.seller_response && <section><h3>Seller response</h3><p>{item.seller_response}</p></section>}
+              {item.admin_decision && <section><h3>Previous admin decision</h3><p>{item.admin_decision}</p></section>}
+              <section className="admin-case-detail__footer">
+                <div><small>Case ID: {item.id}</small><small>Buyer ID: {item.buyer_id}</small><small>Submitted: {new Date(item.created_at).toLocaleString()}</small></div>
+                {!['resolved', 'rejected'].includes(item.status) && <div className="admin-action-row"><button className="admin-small-button" onClick={() => void decide(item, 'approved')}>Approve</button><button className="admin-small-button admin-small-button--danger" onClick={() => void decide(item, 'rejected')}>Reject</button></div>}
+              </section>
+            </div>}
+          </article>
+        })}
+      </div>
+    )}
+  </section>
+}
 
 function SupportTickets() {
   const { push } = useToast()
