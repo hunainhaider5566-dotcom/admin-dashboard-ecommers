@@ -55,3 +55,6 @@
 
 .admin-order-location-map{display:block;width:100%;height:240px;margin-top:14px;border:1px solid var(--admin-line,#dedbd2);border-radius:12px;background:#f4f2ed}
 @media(max-width:640px){.admin-order-location-map{height:210px}}
+
+.admin-variant-row{grid-template-columns:1fr 1fr 1fr 1fr 1fr 34px}@media(max-width:560px){.admin-variant-row{grid-template-columns:1fr 1fr}.admin-variant-row .admin-icon-button{width:100%}}
+.admin-form label small{font-size:11px;font-weight:500;color:#888b82}
