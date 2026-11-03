@@ -12,7 +12,12 @@ export type AdminCustomer = Database['public']['Functions']['admin_customer_summ
 export type AdminAccountSuspension = Database['public']['Functions']['admin_account_suspensions']['Returns'][number]
 export type AdminVariant = Database['public']['Tables']['product_variants']['Row']
 export type AdminSeller = Database['public']['Tables']['seller_profiles']['Row']
-export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row']
+export type AdminCase = Database['public']['Tables']['marketplace_cases']['Row'] & {
+  order: { order_number: string; customer_name: string; customer_phone: string; customer_email: string | null; shipping_address_snapshot: Json; total: number; created_at: string } | null
+  order_item: { product_id: string | null; product_name_snapshot: string; sku_snapshot: string | null; variant_snapshot: Json; product_snapshot: Json; quantity: number; unit_price: number; line_total: number } | null
+  product_image_url: string | null
+  evidence_url: string | null
+}
 export type AdminStoreSettings = Database['public']['Tables']['store_settings']['Row']
 export type AdminNotification = Database['public']['Tables']['notifications']['Row']
 export type AdminSupportTicket = Database['public']['Tables']['support_tickets']['Row']
@@ -512,11 +517,47 @@ export async function reviewSellerApplication(id: string, status: Database['publ
 }
 
 export async function listMarketplaceCases(status = 'all'): Promise<AdminCase[]> {
-  let query = getSupabase().from('marketplace_cases').select('*').order('created_at', { ascending: false }).limit(200)
+  const client = getSupabase()
+  let query = client.from('marketplace_cases').select('*').order('created_at', { ascending: false }).limit(200)
   if (status !== 'all') query = query.eq('status', status as Database['public']['Tables']['marketplace_cases']['Row']['status'])
   const { data, error } = await query
   assertError(error)
-  return (data ?? []) as AdminCase[]
+  const cases = (data ?? []) as Database['public']['Tables']['marketplace_cases']['Row'][]
+  if (!cases.length) return []
+
+  const orderIds = [...new Set(cases.map((item) => item.order_id))]
+  const itemIds = [...new Set(cases.map((item) => item.order_item_id).filter((id): id is string => Boolean(id)))]
+  const [ordersResult, itemsResult] = await Promise.all([
+    client.from('orders').select('id,order_number,customer_name,customer_phone,customer_email,shipping_address_snapshot,total,created_at').in('id', orderIds),
+    itemIds.length ? client.from('order_items').select('id,product_id,product_name_snapshot,sku_snapshot,variant_snapshot,product_snapshot,quantity,unit_price,line_total').in('id', itemIds) : Promise.resolve({ data: [], error: null }),
+  ])
+  assertError(ordersResult.error)
+  assertError(itemsResult.error)
+  const ordersById = new Map((ordersResult.data ?? []).map((row) => [row.id, row]))
+  const itemsById = new Map((itemsResult.data ?? []).map((row) => [row.id, row]))
+  const productIds = [...new Set((itemsResult.data ?? []).map((row) => row.product_id).filter((id): id is string => Boolean(id)))]
+  const imagesResult = productIds.length
+    ? await client.from('product_images').select('product_id,image_url,storage_path,is_primary,sort_order').in('product_id', productIds).order('sort_order').limit(1000)
+    : { data: [], error: null }
+  assertError(imagesResult.error)
+  const imageByProduct = new Map<string, string>()
+  for (const image of imagesResult.data ?? []) {
+    if (image.image_url && !imageByProduct.has(image.product_id)) imageByProduct.set(image.product_id, image.image_url)
+  }
+
+  return Promise.all(cases.map(async (item) => {
+    const evidence = item.evidence_path
+      ? await client.storage.from('complaint-evidence').createSignedUrl(item.evidence_path, 600)
+      : null
+    const orderItem = item.order_item_id ? itemsById.get(item.order_item_id) ?? null : null
+    return {
+      ...item,
+      order: ordersById.get(item.order_id) ?? null,
+      order_item: orderItem,
+      product_image_url: orderItem?.product_id ? imageByProduct.get(orderItem.product_id) ?? null : null,
+      evidence_url: evidence?.data?.signedUrl ?? null,
+    }
+  }))
 }
 
 export async function decideMarketplaceCase(id: string, status: Database['public']['Tables']['marketplace_cases']['Row']['status'], decision: string) {
