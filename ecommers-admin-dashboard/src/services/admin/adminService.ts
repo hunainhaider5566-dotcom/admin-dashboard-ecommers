@@ -98,7 +98,6 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
 
   const categoryNames = new Map((categoriesResult.data ?? []).map((category) => [category.id, category.name]))
   const sellerNames = new Map((sellersResult.data ?? []).map((seller) => [seller.id, seller.shop_name]))
-  const sellerUserIds = new Map((sellersResult.data ?? []).map((seller) => [seller.id, seller.user_id]))
   const inventoryTotals = new Map<string, number>()
   for (const row of inventoryResult.data ?? []) {
     inventoryTotals.set(row.product_id, (inventoryTotals.get(row.product_id) ?? 0) + (row.quantity ?? 0))
