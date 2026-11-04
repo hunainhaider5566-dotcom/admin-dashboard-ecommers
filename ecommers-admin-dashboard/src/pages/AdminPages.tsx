@@ -447,7 +447,7 @@ function Orders() {
       setUpdatingIds((current) => current.filter((id) => id !== order.id))
     }
   }
-  async function rejectPendingOrder(order: AdminOrder) {
+  async function rejectPendingOrder(order: AdminOrder & { vendor_names: string[] }) {
     if (order.order_status !== 'pending' || updatingIds.includes(order.id)) return
     if (!window.confirm(`Reject order ${order.order_number}? The customer will receive an email update.`)) return
     setUpdatingIds((current) => [...current, order.id])
