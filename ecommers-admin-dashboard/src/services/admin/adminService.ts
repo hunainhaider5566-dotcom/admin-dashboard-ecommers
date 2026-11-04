@@ -81,10 +81,14 @@ function assertError(error: { message: string } | null) {
 }
 
 function getProductImageBucket(storagePath: string, productId: string): 'product-images' | 'product-drafts' {
-  // Older vendor submissions were stored as <seller-user-id>/<product-id>/<file> in product-images.
-  // Admin draft uploads use <product-id>/<file> in product-drafts.
-  const segments = storagePath.split('/')
-  return segments[1] === productId ? 'product-images' : 'product-drafts'
+  // Vendor uploads may use either <user-id>/<product-id>/<file> (legacy)
+  // or <product-id>/<user-id>/<file> (current vendor flow). Admin drafts
+  // use <product-id>/<file>. Detect both vendor layouts before assuming draft.
+  const segments = storagePath.split('/').filter(Boolean)
+  return (segments[0] === productId && segments.length >= 3)
+    || segments[1] === productId
+    ? 'product-images'
+    : 'product-drafts'
 }
 
 export async function getAdminSummary() {
@@ -226,9 +230,20 @@ async function publishProductImages(productId: string) {
   assertError(error)
   for (const image of images ?? []) {
     if (!image.storage_path || image.image_url) continue
+    const sourceBucket = getProductImageBucket(image.storage_path, productId)
+    if (sourceBucket === 'product-images') {
+      // Vendor images are uploaded directly into the public bucket. The old
+      // code incorrectly looked for these objects in product-drafts, causing
+      // Storage NoSuchKey / Object not found when admins published the listing.
+      const url = client.storage.from('product-images').getPublicUrl(image.storage_path).data.publicUrl
+      const saved = await client.from('product_images').update({ image_url: url, storage_path: null }).eq('id', image.id)
+      assertError(saved.error)
+      continue
+    }
     const { data: file, error: downloadError } = await client.storage.from('product-drafts').download(image.storage_path)
-    assertError(downloadError)
-    if (!file) throw new Error('A draft product image could not be opened for publication.')
+    if (downloadError || !file) {
+      throw new Error(`Draft image is missing from product storage (${image.storage_path}). Re-upload this image before publishing.`)
+    }
     const upload = await client.storage.from('product-images').upload(image.storage_path, file, { upsert: true, contentType: file.type || undefined })
     assertError(upload.error)
     const url = client.storage.from('product-images').getPublicUrl(image.storage_path).data.publicUrl
