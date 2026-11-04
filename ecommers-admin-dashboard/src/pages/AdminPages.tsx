@@ -787,11 +787,114 @@ function SellerDocumentLink({ path }: { path: string | null }) {
   return <button className="admin-small-button" onClick={() => void open()} disabled={opening}>{opening ? 'Opening…' : 'View document'}</button>
 }
 
+type FoodMapPoint = { lat: number; lng: number }
+
+function FoodLocationMap({ initialPoint, onSelect }: { initialPoint: FoodMapPoint | null; onSelect: (point: FoodMapPoint) => void }) {
+  const mapElement = useRef<HTMLDivElement>(null)
+  const mapRef = useRef<any>(null)
+  const markerRef = useRef<any>(null)
+  const onSelectRef = useRef(onSelect)
+  onSelectRef.current = onSelect
+  const [mapReady, setMapReady] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [mapError, setMapError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const cssId = 'jtbazar-leaflet-css'
+    if (!document.getElementById(cssId)) {
+      const link = document.createElement('link')
+      link.id = cssId
+      link.rel = 'stylesheet'
+      link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'
+      document.head.appendChild(link)
+    }
+    const initialize = () => {
+      if (cancelled || !mapElement.current || !(window as any).L || mapRef.current) return
+      const L = (window as any).L
+      const start = initialPoint ? [initialPoint.lat, initialPoint.lng] : [24.8607, 67.0011]
+      const map = L.map(mapElement.current, { scrollWheelZoom: true }).setView(start, initialPoint ? 15 : 12)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>'
+      }).addTo(map)
+      mapRef.current = map
+      const setPoint = (lat: number, lng: number) => {
+        if (!markerRef.current) markerRef.current = L.marker([lat, lng], { draggable: true }).addTo(map)
+        markerRef.current.setLatLng([lat, lng])
+        markerRef.current.off('dragend')
+        markerRef.current.on('dragend', (event: any) => {
+          const point = event.target.getLatLng()
+          onSelectRef.current({ lat: Number(point.lat.toFixed(7)), lng: Number(point.lng.toFixed(7)) })
+        })
+        onSelectRef.current({ lat: Number(lat.toFixed(7)), lng: Number(lng.toFixed(7)) })
+      }
+      if (initialPoint) {
+        markerRef.current = L.marker(start, { draggable: true }).addTo(map)
+        markerRef.current.on('dragend', (event: any) => {
+          const point = event.target.getLatLng()
+          onSelectRef.current({ lat: Number(point.lat.toFixed(7)), lng: Number(point.lng.toFixed(7)) })
+        })
+      }
+      map.on('click', (event: any) => setPoint(event.latlng.lat, event.latlng.lng))
+      setMapReady(true)
+      window.setTimeout(() => map.invalidateSize(), 100)
+    }
+    if ((window as any).L) initialize()
+    else {
+      let script = document.getElementById('jtbazar-leaflet-js') as HTMLScriptElement | null
+      if (!script) {
+        script = document.createElement('script')
+        script.id = 'jtbazar-leaflet-js'
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'
+        script.async = true
+        document.body.appendChild(script)
+      }
+      script.addEventListener('load', initialize)
+      if ((window as any).L) initialize()
+    }
+    return () => { cancelled = true; mapRef.current?.remove(); mapRef.current = null }
+  }, [])
+
+  function useCurrentLocation() {
+    if (!navigator.geolocation) { setMapError('This browser does not support location access.'); return }
+    setLocating(true)
+    setMapError(null)
+    navigator.geolocation.getCurrentPosition((position) => {
+      const point = { lat: Number(position.coords.latitude.toFixed(7)), lng: Number(position.coords.longitude.toFixed(7)) }
+      const L = (window as any).L
+      if (mapRef.current && L) {
+        mapRef.current.setView([point.lat, point.lng], 16)
+        if (!markerRef.current) markerRef.current = L.marker([point.lat, point.lng], { draggable: true }).addTo(mapRef.current)
+        markerRef.current.setLatLng([point.lat, point.lng])
+        markerRef.current.off('dragend')
+        markerRef.current.on('dragend', (event: any) => {
+          const next = event.target.getLatLng()
+          onSelectRef.current({ lat: Number(next.lat.toFixed(7)), lng: Number(next.lng.toFixed(7)) })
+        })
+      }
+      onSelectRef.current(point)
+      setLocating(false)
+    }, (cause) => {
+      setMapError(cause.code === 1 ? 'Location permission denied. Allow location access in your browser, or select the point manually on the map.' : 'Could not detect your location. Select the point manually on the map.')
+      setLocating(false)
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 })
+  }
+
+  return <div className="admin-food-map-wrap">
+    <div className="admin-food-map-toolbar"><span>Click the map or drag the pin to choose your pickup point.</span><button type="button" className="admin-button admin-button--outline" onClick={useCurrentLocation} disabled={locating}>{locating ? 'Detecting location…' : '◎ Use my current location'}</button></div>
+    <div ref={mapElement} className="admin-food-location-map" role="application" aria-label="Select JTBazar food delivery operating location" />
+    {!mapReady && <small className="admin-copy">Loading interactive map…</small>}
+    {mapError && <p className="admin-error" role="alert">{mapError}</p>}
+  </div>
+}
+
 function StoreSettings() {
   const { push } = useToast()
   const [settings, setSettings] = useState<AdminStoreSettings | null>(null)
   const [foodLocation, setFoodLocation] = useState<AdminFoodDeliverySettings | null>(null)
   const [foodLocationSaving, setFoodLocationSaving] = useState(false)
+  const [selectedFoodPoint, setSelectedFoodPoint] = useState<FoodMapPoint | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const load = () => { setError(null); void getAdminStoreSettings().then(setSettings).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Store settings could not be loaded.')) }
@@ -804,15 +907,10 @@ function StoreSettings() {
   async function saveFoodLocation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const data = new FormData(event.currentTarget)
-    const latText = String(data.get('hub_lat') ?? '').trim()
-    const lngText = String(data.get('hub_lng') ?? '').trim()
     const radius = Number(data.get('radius_km'))
-    const lat = latText === '' ? null : Number(latText)
-    const lng = lngText === '' ? null : Number(lngText)
-    if ((lat === null) !== (lng === null) || (lat !== null && (!Number.isFinite(lat) || lat < -90 || lat > 90)) || (lng !== null && (!Number.isFinite(lng) || lng < -180 || lng > 180))) {
-      push('Enter both valid coordinates, or leave both empty to disable JTBazar-owned food delivery.', 'error')
-      return
-    }
+    const lat = selectedFoodPoint?.lat ?? null
+    const lng = selectedFoodPoint?.lng ?? null
+    if ((lat === null) !== (lng === null)) { push('Select a location on the map before saving.', 'error'); return }
     if (!Number.isFinite(radius) || radius <= 0 || radius > 50) { push('Delivery radius must be greater than 0 and no more than 50 km.', 'error'); return }
     setFoodLocationSaving(true)
     try {
@@ -844,7 +942,7 @@ function StoreSettings() {
   }
   if (error) return <ErrorState message={error} retry={load} />
   if (!settings) return <Loading />
-  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Storefront defaults and contact details</p><h2>Store settings</h2></div></div><form className="admin-form admin-panel" onSubmit={(event) => void submit(event)}><div className="admin-panel-heading"><div><h3>Public store configuration</h3><p className="admin-copy">These values are read by the storefront checkout, footer and help pages. Delivery fee and cash-on-delivery availability are enforced again by the database when an order is placed.</p></div></div><div className="admin-form-grid"><label className="admin-form-span">Store name<input name="store_name" defaultValue={settings.store_name} maxLength={160} required /></label><label>Support email<input name="support_email" type="email" defaultValue={settings.support_email ?? ''} placeholder="support@example.com" /></label><label>Support phone<input name="support_phone" type="tel" maxLength={13} pattern="(03[0-9]{9}|\+923[0-9]{9})" defaultValue={settings.support_phone ?? ''} placeholder="03001234567 or +923001234567" /></label><label>Support WhatsApp<input name="support_whatsapp" defaultValue={settings.support_whatsapp ?? ''} placeholder="+92 300 0000000" /></label><label>Delivery fee (PKR)<input name="delivery_fee" type="number" min="0" step="0.01" defaultValue={settings.delivery_fee} required /></label><label>Return window (days)<input name="return_window_days" type="number" min="0" step="1" defaultValue={settings.return_window_days} required /></label><label className="admin-check"><input name="cod_enabled" type="checkbox" defaultChecked={settings.cod_enabled} /> Cash on delivery available</label></div><div className="admin-form-actions"><button className="admin-button" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button></div></form><form key={foodLocation ? `${foodLocation.hub_lat ?? "none"}-${foodLocation.hub_lng ?? "none"}-${foodLocation.radius_km}` : "loading"} className="admin-form admin-panel" onSubmit={(event) => void saveFoodLocation(event)}><div className="admin-panel-heading"><div><h3>JTBazar food delivery operating location</h3><p className="admin-copy">No permanent warehouse is required. Enter your current operating/pickup location here whenever it changes. JTBazar-owned Food &amp; Groceries orders are accepted only within this radius. Vendor-owned food orders continue using each vendor shop location.</p></div></div><div className="admin-form-grid"><label>Current latitude<input name="hub_lat" type="number" min="-90" max="90" step="any" defaultValue={foodLocation?.hub_lat ?? ''} placeholder="e.g. 24.8607" /></label><label>Current longitude<input name="hub_lng" type="number" min="-180" max="180" step="any" defaultValue={foodLocation?.hub_lng ?? ''} placeholder="e.g. 67.0011" /></label><label>Delivery radius (km)<input name="radius_km" type="number" min="0.1" max="50" step="0.1" defaultValue={foodLocation?.radius_km ?? 5} required /></label></div><p className="admin-copy">{foodLocation?.hub_lat != null && foodLocation.hub_lng != null ? `Saved operating point: ${foodLocation.hub_lat}, ${foodLocation.hub_lng} · ${foodLocation.radius_km} km radius` : 'No current operating location saved. JTBazar-owned food orders remain blocked until you enter coordinates.'}</p><div className="admin-form-actions"><button className="admin-button" disabled={foodLocationSaving || !foodLocation}>{foodLocationSaving ? 'Saving…' : 'Save food delivery location'}</button></div></form></section>
+  return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Storefront defaults and contact details</p><h2>Store settings</h2></div></div><form className="admin-form admin-panel" onSubmit={(event) => void submit(event)}><div className="admin-panel-heading"><div><h3>Public store configuration</h3><p className="admin-copy">These values are read by the storefront checkout, footer and help pages. Delivery fee and cash-on-delivery availability are enforced again by the database when an order is placed.</p></div></div><div className="admin-form-grid"><label className="admin-form-span">Store name<input name="store_name" defaultValue={settings.store_name} maxLength={160} required /></label><label>Support email<input name="support_email" type="email" defaultValue={settings.support_email ?? ''} placeholder="support@example.com" /></label><label>Support phone<input name="support_phone" type="tel" maxLength={13} pattern="(03[0-9]{9}|\+923[0-9]{9})" defaultValue={settings.support_phone ?? ''} placeholder="03001234567 or +923001234567" /></label><label>Support WhatsApp<input name="support_whatsapp" defaultValue={settings.support_whatsapp ?? ''} placeholder="+92 300 0000000" /></label><label>Delivery fee (PKR)<input name="delivery_fee" type="number" min="0" step="0.01" defaultValue={settings.delivery_fee} required /></label><label>Return window (days)<input name="return_window_days" type="number" min="0" step="1" defaultValue={settings.return_window_days} required /></label><label className="admin-check"><input name="cod_enabled" type="checkbox" defaultChecked={settings.cod_enabled} /> Cash on delivery available</label></div><div className="admin-form-actions"><button className="admin-button" disabled={saving}>{saving ? 'Saving…' : 'Save settings'}</button></div></form><form key={foodLocation ? `${foodLocation.hub_lat ?? "none"}-${foodLocation.hub_lng ?? "none"}-${foodLocation.radius_km}` : "loading"} className="admin-form admin-panel" onSubmit={(event) => void saveFoodLocation(event)}><div className="admin-panel-heading"><div><h3>JTBazar food delivery operating location</h3><p className="admin-copy">No permanent warehouse is required. Use the map to select your current operating/pickup point whenever it changes. JTBazar-owned Food &amp; Groceries orders are accepted only within this radius. Vendor-owned food orders continue using each vendor shop location.</p></div></div><FoodLocationMap initialPoint={foodLocation?.hub_lat != null && foodLocation.hub_lng != null ? { lat: foodLocation.hub_lat, lng: foodLocation.hub_lng } : null} onSelect={setSelectedFoodPoint} /><div className="admin-form-grid"><label>Delivery radius (km)<input name="radius_km" type="number" min="0.1" max="50" step="0.1" defaultValue={foodLocation?.radius_km ?? 5} required /></label></div><p className="admin-copy">{selectedFoodPoint ? `Selected operating point: ${selectedFoodPoint.lat}, ${selectedFoodPoint.lng}` : foodLocation?.hub_lat != null && foodLocation.hub_lng != null ? `Saved operating point: ${foodLocation.hub_lat}, ${foodLocation.hub_lng}` : 'No current operating location selected. Use “Use my current location” or click the map; JTBazar-owned food orders remain blocked until you save a point.'}</p><div className="admin-form-actions"><button className="admin-button" disabled={foodLocationSaving || !foodLocation || !selectedFoodPoint}>{foodLocationSaving ? 'Saving…' : 'Save food delivery location'}</button></div></form></section>
 }
 
 function Audit() { const [items, setItems] = useState<Array<{ id: string; action: string; entity: string; entity_id: string | null; created_at: string }>>([]); const [error, setError] = useState<string | null>(null); const load = () => void listAuditLogs().then(setItems).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Audit log could not be loaded.')); useEffect(load, []); useAutoRefresh(load); return <section className="admin-content"><div className="admin-page-heading"><div><p className="admin-kicker">Sensitive changes</p><h2>Audit log</h2></div></div>{error ? <ErrorState message={error} retry={load} /> : items.length === 0 ? <Empty title="No audit events" detail="Product, category, inventory, note, and order status changes will be recorded by database triggers." /> : <div className="admin-table-wrap"><TableTools /><table className="admin-table"><thead><tr><th>Action</th><th>Entity</th><th>Entity ID</th><th>When</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><em className={statusClass(item.action.toLowerCase())}>{item.action}</em></td><td>{item.entity}</td><td className="admin-mono">{item.entity_id ?? '—'}</td><td>{formatDate(item.created_at)}</td></tr>)}</tbody></table></div>}</section> }
