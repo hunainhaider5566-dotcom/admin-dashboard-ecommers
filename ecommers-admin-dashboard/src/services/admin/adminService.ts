@@ -21,6 +21,7 @@ export type AdminCaseDetail = AdminCase & {
   evidence_url: string | null
 }
 export type AdminStoreSettings = Database['public']['Tables']['store_settings']['Row']
+export type AdminFoodDeliverySettings = { hub_lat: number | null; hub_lng: number | null; radius_km: number; updated_at: string }
 export type AdminNotification = Database['public']['Tables']['notifications']['Row']
 export type AdminSupportTicket = Database['public']['Tables']['support_tickets']['Row']
 export type AdminSupportInboxTicket = { id: string; ticket_kind: 'seller' | 'customer'; requester_name: string; requester_email: string; subject: string; message: string; status: 'open' | 'in_progress' | 'resolved'; admin_response: string | null; created_at: string; updated_at: string }
@@ -528,6 +529,22 @@ export async function updateAdminStoreSettings(input: {
   const { data, error } = await getSupabase().rpc('admin_update_store_settings', { p_settings: input })
   assertError(error)
   return data as AdminStoreSettings
+}
+
+export async function getAdminFoodDeliverySettings(): Promise<AdminFoodDeliverySettings> {
+  const { data, error } = await getSupabase().rpc('admin_get_jtbazar_food_delivery_settings')
+  assertError(error)
+  return data as unknown as AdminFoodDeliverySettings
+}
+
+export async function updateAdminFoodDeliverySettings(input: { hub_lat: number | null; hub_lng: number | null; radius_km: number }): Promise<AdminFoodDeliverySettings> {
+  const { data, error } = await getSupabase().rpc('admin_update_jtbazar_food_delivery_settings', {
+    p_hub_lat: input.hub_lat,
+    p_hub_lng: input.hub_lng,
+    p_radius_km: input.radius_km,
+  })
+  assertError(error)
+  return data as unknown as AdminFoodDeliverySettings
 }
 
 export async function listAuditLogs() {
