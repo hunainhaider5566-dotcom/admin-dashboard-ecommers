@@ -101,3 +101,11 @@
 
 .admin-unhide-publish-choice{display:flex;align-items:center;gap:9px;margin:12px 0;padding:12px;border:1px solid var(--admin-line,#dedbd2);border-radius:8px;background:#f8f6f1;font-size:13px}
 .admin-unhide-publish-choice input{width:16px;height:16px;flex:0 0 16px}
+
+/* JTBazar food delivery map picker */
+.admin-food-map-wrap { display: grid; gap: 10px; min-width: 0; }
+.admin-food-map-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.admin-food-map-toolbar > span { color: var(--admin-muted, #64748b); font-size: 13px; }
+.admin-food-location-map { width: 100%; height: 360px; min-height: 280px; border: 1px solid var(--admin-border, #d9dee7); border-radius: 12px; overflow: hidden; z-index: 0; background: #e8edf1; }
+.admin-food-location-map .leaflet-control-attribution { font-size: 10px; }
+@media (max-width: 640px) { .admin-food-location-map { height: 300px; min-height: 260px; } .admin-food-map-toolbar > button { width: 100%; justify-content: center; } }
