@@ -322,6 +322,49 @@ function Categories() {
   </section>
 }
 
+function CustomerReviews() {
+  const { push } = useToast()
+  const [items, setItems] = useState<AdminCustomerReview[]>([])
+  const [filter, setFilter] = useState<'all' | 'product' | 'seller'>('all')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const load = (quiet = false) => {
+    if (!quiet) setLoading(true)
+    setError(null)
+    void listAdminCustomerReviews()
+      .then((next) => setItems((current) => {
+        const previous = new Map(current.map((row) => [row.review_id, row]))
+        return next.map((row) => { const old = previous.get(row.review_id); return old && JSON.stringify(old) === JSON.stringify(row) ? old : row })
+      }))
+      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Customer reviews could not be loaded.'))
+      .finally(() => { if (!quiet) setLoading(false) })
+  }
+  useEffect(() => { load() }, [])
+  useAutoRefresh(load)
+  async function setStatus(item: AdminCustomerReview, status: 'approved' | 'rejected') {
+    if (busyId) return
+    setBusyId(item.review_id)
+    const previous = item.status
+    setItems((current) => current.map((row) => row.review_id === item.review_id ? { ...row, status } : row))
+    try {
+      await setAdminCustomerReviewStatus(item.review_type, item.review_id, status)
+      push(status === 'approved' ? 'Review is visible to customers.' : 'Review hidden from customers.', 'success')
+    } catch (cause) {
+      setItems((current) => current.map((row) => row.review_id === item.review_id ? { ...row, status: previous } : row))
+      push(cause instanceof Error ? cause.message : 'Review status could not be updated.', 'error')
+    } finally { setBusyId(null) }
+  }
+  const visible = filter === 'all' ? items : items.filter((item) => item.review_type === filter)
+  return <section className="admin-content">
+    <div className="admin-page-heading"><div><p className="admin-kicker">Customer feedback moderation</p><h2>Customer Reviews</h2><p className="admin-copy">Review products and shops, then control whether each review is visible on the storefront.</p></div><button className="admin-button admin-button--outline" onClick={() => load()}><RefreshCw size={15}/> Refresh</button></div>
+    <div className="admin-toolbar"><select aria-label="Filter review type" value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">All reviews</option><option value="product">Product reviews</option><option value="seller">Shop reviews</option></select><span className="admin-table-count">{visible.length} reviews</span></div>
+    {error ? <ErrorState message={error} retry={load}/> : loading ? <Loading/> : visible.length === 0 ? <Empty title="No customer reviews yet" detail="Reviews submitted for products and shops will appear here."/> :
+      <div className="admin-table-wrap"><table className="admin-table"><thead><tr><th>Type / target</th><th>Customer</th><th>Rating</th><th>Review</th><th>Order</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        {visible.map((item) => <tr key={item.review_id}><td><strong>{item.review_type === 'product' ? 'Product' : 'Shop'}</strong><small>{item.target_name}</small></td><td>{item.buyer_name}<small>{formatDate(item.created_at)}</small></td><td><strong>{'★'.repeat(item.rating)}{'☆'.repeat(5-item.rating)}</strong><small>{item.rating}/5</small></td><td>{item.title && <strong>{item.title}</strong>}<small>{item.comment || 'No written comment'}</small></td><td>{item.order_number}</td><td><em className={statusClass(item.status === 'rejected' ? 'hidden' : item.status)}>{item.status === 'rejected' ? 'hidden' : item.status}</em></td><td><div className="admin-action-row">{item.status === 'approved' ? <button type="button" className="admin-small-button admin-small-button--danger" disabled={busyId === item.review_id} onClick={() => void setStatus(item, 'rejected')}><EyeOff size={14}/> Hide</button> : <button type="button" className="admin-small-button" disabled={busyId === item.review_id} onClick={() => void setStatus(item, 'approved')}><Eye size={14}/> Unhide</button>}{busyId === item.review_id && <small>Saving…</small>}</div></td></tr>)}
+      </tbody></table></div>}
+  </section>
+}
 function TableTools() {
   const [term, setTerm] = useState('')
   const [sortIndex, setSortIndex] = useState('')
