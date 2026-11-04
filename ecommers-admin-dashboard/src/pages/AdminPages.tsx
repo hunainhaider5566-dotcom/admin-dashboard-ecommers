@@ -901,7 +901,10 @@ function StoreSettings() {
   useEffect(load, [])
   useEffect(() => {
     void getAdminFoodDeliverySettings()
-      .then(setFoodLocation)
+      .then((settings) => {
+        setFoodLocation(settings)
+        setSelectedFoodPoint(settings.hub_lat != null && settings.hub_lng != null ? { lat: settings.hub_lat, lng: settings.hub_lng } : null)
+      })
       .catch((cause: unknown) => push(cause instanceof Error ? cause.message : 'Food delivery location could not be loaded.', 'error'))
   }, [])
   async function saveFoodLocation(event: FormEvent<HTMLFormElement>) {
