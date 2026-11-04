@@ -43,6 +43,19 @@ export interface AdminHero {
   updated_at: string
 }
 
+export interface AdminCustomerReview {
+  review_type: 'product' | 'seller'
+  review_id: string
+  target_name: string
+  buyer_name: string
+  rating: number
+  title: string | null
+  comment: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  order_number: string
+  created_at: string
+}
+
 export interface AdminPromotion {
   id: string
   title: string
@@ -705,4 +718,16 @@ export async function uploadPublicMedia(file: File, folder = "categories"): Prom
   assertError(upload.error)
   const { data } = client.storage.from("product-images").getPublicUrl(path)
   return data.publicUrl
+}
+
+
+export async function listAdminCustomerReviews(): Promise<AdminCustomerReview[]> {
+  const { data, error } = await (getSupabase() as any).rpc('admin_list_customer_reviews')
+  assertError(error)
+  return (data ?? []) as AdminCustomerReview[]
+}
+
+export async function setAdminCustomerReviewStatus(reviewType: 'product' | 'seller', reviewId: string, status: 'approved' | 'rejected' | 'pending'): Promise<void> {
+  const { error } = await (getSupabase() as any).rpc('admin_set_customer_review_status', { p_review_type: reviewType, p_review_id: reviewId, p_status: status })
+  assertError(error)
 }
