@@ -749,3 +749,9 @@ export async function setAdminCustomerReviewStatus(reviewType: 'product' | 'sell
   const { error } = await (getSupabase() as any).rpc('admin_set_customer_review_status', { p_review_type: reviewType, p_review_id: reviewId, p_status: status })
   assertError(error)
 }
+
+export async function setAdminVendorLock(id: string, locked: boolean, reason?: string) {
+  const { data, error } = await getSupabase().rpc('admin_set_vendor_lock', { p_seller_id: id, p_locked: locked, p_reason: reason ?? null })
+  assertError(error)
+  return data as AdminSeller
+}
