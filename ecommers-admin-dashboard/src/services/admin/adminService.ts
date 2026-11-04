@@ -434,10 +434,13 @@ export async function updateOrder(id: string, order_status: Database['public']['
     assertError(error)
   }
 
-  // Send a customer notification after the status update succeeds.
-  if (['confirmed', 'shipped', 'delivered'].includes(order_status)) {
+  // Send an email for every customer-visible lifecycle transition.
+  if (['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(order_status)) {
+    const { data: updatedOrder, error: lookupError } = await client.from('orders').select('confirmation_status').eq('id', id).maybeSingle()
+    assertError(lookupError)
+    const emailStatus = order_status === 'cancelled' && updatedOrder?.confirmation_status === 'not_reachable' ? 'rejected' : order_status
     const { data, error: emailError } = await client.functions.invoke('commerce-email', {
-      body: { event: 'order_status', order_id: id, status: order_status },
+      body: { event: 'order_status', order_id: id, status: emailStatus },
     })
 
     if (emailError) {
