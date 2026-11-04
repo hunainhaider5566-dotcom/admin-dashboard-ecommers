@@ -67,6 +67,13 @@ function assertError(error: { message: string } | null) {
   if (error) throw new Error(error.message)
 }
 
+function getProductImageBucket(storagePath: string, productId: string): 'product-images' | 'product-drafts' {
+  // Older vendor submissions were stored as <seller-user-id>/<product-id>/<file> in product-images.
+  // Admin draft uploads use <product-id>/<file> in product-drafts.
+  const segments = storagePath.split('/')
+  return segments[1] === productId ? 'product-images' : 'product-drafts'
+}
+
 export async function getAdminSummary() {
   const { data, error } = await getSupabase().rpc('admin_dashboard_summary')
   assertError(error)
@@ -108,10 +115,11 @@ export async function listAdminProducts(search = ''): Promise<AdminProduct[]> {
     const primary = images.find((image) => image.is_primary) ?? images[0]
     let imageUrl = primary?.image_url ?? null
     if (!imageUrl && primary?.storage_path) {
-      if (row.seller_id && primary.storage_path.startsWith(`${sellerUserIds.get(row.seller_id)}/${row.id}/`)) imageUrl = client.storage.from('product-images').getPublicUrl(primary.storage_path).data.publicUrl
-      else if (row.publication_status === 'published') imageUrl = client.storage.from('product-images').getPublicUrl(primary.storage_path).data.publicUrl
-      else {
-        const signed = await client.storage.from('product-drafts').createSignedUrl(primary.storage_path, 600)
+      const bucket = getProductImageBucket(primary.storage_path, row.id)
+      if (bucket === 'product-images') {
+        imageUrl = client.storage.from(bucket).getPublicUrl(primary.storage_path).data.publicUrl
+      } else {
+        const signed = await client.storage.from(bucket).createSignedUrl(primary.storage_path, 600)
         imageUrl = signed.data?.signedUrl ?? null
       }
     }
@@ -174,8 +182,7 @@ export async function getAdminProductEditor(id: string) {
   const mappedImages = await Promise.all((images.data ?? []).map(async (image) => {
     if (image.image_url) return { ...image, display_url: image.image_url }
     if (!image.storage_path) return { ...image, display_url: null }
-    const vendorPath = Boolean(seller.data?.user_id && image.storage_path.startsWith(`${seller.data.user_id}/${id}/`))
-    const bucket = vendorPath || productRow.publication_status === 'published' ? 'product-images' : 'product-drafts'
+    const bucket = getProductImageBucket(image.storage_path, id)
     if (bucket === 'product-images') return { ...image, display_url: client.storage.from(bucket).getPublicUrl(image.storage_path).data.publicUrl }
     const signed = await client.storage.from(bucket).createSignedUrl(image.storage_path, 600)
     return { ...image, display_url: signed.data?.signedUrl ?? null }
