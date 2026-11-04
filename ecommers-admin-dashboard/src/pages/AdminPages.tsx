@@ -648,9 +648,13 @@ function Sellers() {
   async function review(item: AdminSeller, next: AdminSeller['status'], reviewReason?: string) {
     try {
       setSavingReview(true)
-      const result = await reviewSellerApplication(item.id, next, reviewReason)
-      const emailed = next === 'approved' ? (result as { email_sent?: boolean }).email_sent : undefined
-      push(next === 'approved' && !emailed ? 'Seller approved, but the approval email could not be sent.' : `Seller ${next}${emailed ? ' and approval email sent' : ''}.`, next === 'approved' && !emailed ? 'error' : 'success')
+      const result = await reviewSellerApplication(item.id, next, reviewReason) as { email_sent?: boolean; email_error?: string }
+      const needsEmail = next === 'approved' || next === 'rejected'
+      const emailed = result.email_sent
+      const actionLabel = next === 'approved' ? 'Seller approved' : next === 'rejected' ? 'Seller application rejected' : `Seller ${next}`
+      push(needsEmail && !emailed
+        ? `${actionLabel}, but the email could not be sent. ${result.email_error ?? 'Check SMTP secrets and Edge Function logs.'}`
+        : `${actionLabel}${needsEmail ? ' and email sent' : ''}.`, needsEmail && !emailed ? 'error' : 'success')
       setReasonTarget(null)
       setReason('')
       load()
