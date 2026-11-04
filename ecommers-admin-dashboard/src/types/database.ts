@@ -87,6 +87,7 @@ export interface Database {
       vendor_order_items: { Args: Record<string, never>; Returns: VendorOrderItemRow[] }
       vendor_update_order_item: { Args: { p_item_id: string; p_status: string; p_tracking_number?: string | null; p_tracking_url?: string | null; p_vendor_note?: string | null }; Returns: boolean }
       admin_review_seller: { Args: { p_seller_id: string; p_status: SellerStatus; p_reason?: string | null }; Returns: SellerProfileRow }
+      admin_set_vendor_lock: { Args: { p_seller_id: string; p_locked: boolean; p_reason?: string | null }; Returns: SellerProfileRow }
       admin_decide_marketplace_case: { Args: { p_case_id: string; p_status: string; p_decision: string }; Returns: MarketplaceCaseRow }
       admin_moderate_product: { Args: { p_product_id: string; p_status: ModerationStatus; p_reason?: string | null }; Returns: ProductRow }
       admin_list_products: { Args: { p_search?: string }; Returns: ProductRow[] }
