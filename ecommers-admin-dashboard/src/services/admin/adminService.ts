@@ -616,11 +616,18 @@ export async function getVendorDocumentSignedUrl(path: string): Promise<string |
 export async function reviewSellerApplication(id: string, status: Database['public']['Tables']['seller_profiles']['Row']['status'], reason?: string) {
   const { data, error } = await getSupabase().rpc('admin_review_seller', { p_seller_id: id, p_status: status, p_reason: reason ?? null })
   assertError(error)
-  if (status === 'approved') {
-    const { data: emailData, error: emailError } = await getSupabase().functions.invoke('commerce-email', { body: { event: 'seller_approved', seller_profile_id: id } })
-    return { result: data, email_sent: !emailError && (emailData as { sent?: boolean } | null)?.sent === true }
+  if (status === 'approved' || status === 'rejected') {
+    const event = status === 'approved' ? 'seller_approved' : 'seller_rejected'
+    const { data: emailData, error: emailError } = await getSupabase().functions.invoke('commerce-email', {
+      body: { event, seller_profile_id: id },
+    })
+    return {
+      result: data,
+      email_sent: !emailError && (emailData as { sent?: boolean } | null)?.sent === true,
+      email_error: emailError?.message ?? ((emailData as { error?: string } | null)?.error ?? null),
+    }
   }
-  return data
+  return { result: data, email_sent: true }
 }
 
 export async function listMarketplaceCases(status = 'all'): Promise<AdminCaseDetail[]> {
