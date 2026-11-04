@@ -304,6 +304,7 @@ function Categories() {
     try {
       const imageUrl = image ? await uploadPublicMedia(image, 'categories') : editing?.image_url ?? null
       const savedCategory = await saveCategory({ name: String(data.get('name') ?? '').trim(), slug: String(data.get('slug') ?? '').trim(), description: String(data.get('description') ?? ''), is_active: data.get('is_active') === 'on', is_coming_soon: data.get('is_coming_soon') === 'on', is_food_category: data.get('is_food_category') === 'on', sort_order: Number(data.get('sort_order') ?? 0), parent_id: editing?.parent_id ?? null, eyebrow: editing?.eyebrow ?? null, image_url: imageUrl, seo_title: editing?.seo_title ?? null, seo_description: editing?.seo_description ?? null }, editing?.id)
+      if (!savedCategory) throw new Error('The category could not be verified after saving.')
       setItems((current) => editing ? current.map((row) => row.id === savedCategory.id ? { ...row, ...savedCategory } : row) : [...current, savedCategory as AdminCategory].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name)))
       push(editing ? 'Category updated.' : 'Category created.')
       setShowForm(false); setEditing(null); setImage(null)
