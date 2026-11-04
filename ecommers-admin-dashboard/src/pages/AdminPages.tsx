@@ -437,9 +437,10 @@ function Orders() {
     setUpdatingIds((current) => [...current, order.id])
     setItems((current) => current.map((item) => item.id === order.id ? { ...item, order_status: next } : item))
     try {
-      await updateOrder(order.id, next)
+      const emailSent = await updateOrder(order.id, next)
       const messages: Record<string, string> = { confirmed: 'Order confirmed after customer verification.', processing: 'Order is being prepared.', shipped: 'Order has been shipped.', delivered: 'Order marked as delivered.', cancelled: 'Order cancelled.' }
-      push(messages[next] ?? 'Order status updated.', 'success')
+      if (emailSent) push(messages[next] ?? 'Order status updated.', 'success')
+      else push('Order status updated, but customer email was not sent. Check SMTP secrets and Edge Function logs.', 'error')
     } catch (cause) {
       setItems((current) => current.map((item) => item.id === order.id ? { ...item, order_status: previousStatus } : item))
       push(cause instanceof Error ? cause.message : 'The database rejected this transition.', 'error')
