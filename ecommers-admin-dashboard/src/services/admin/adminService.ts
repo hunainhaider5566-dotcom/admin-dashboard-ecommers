@@ -451,6 +451,21 @@ export async function updateOrder(id: string, order_status: Database['public']['
   }
 }
 
+export async function rejectAdminOrder(id: string) {
+  const client = getSupabase()
+  const { error } = await (client as any).rpc('admin_confirm_customer_order', {
+    p_order_id: id,
+    p_decision: 'not_reachable',
+    p_note: 'Order rejected after customer confirmation attempt.',
+  })
+  assertError(error)
+  const { data, error: emailError } = await client.functions.invoke('commerce-email', {
+    body: { event: 'order_status', order_id: id, status: 'rejected' },
+  })
+  if (emailError) console.error('Order rejection email invocation failed:', emailError.message)
+  else if (!data?.sent) console.warn('Order rejection email was not sent:', data)
+}
+
 export async function listAdminVendorPickups(orderId?: string) {
   const { data, error } = await (getSupabase() as any).rpc('admin_list_vendor_pickups', {
     p_order_id: orderId ?? null,
