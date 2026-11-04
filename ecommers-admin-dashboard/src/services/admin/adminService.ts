@@ -445,10 +445,14 @@ export async function updateOrder(id: string, order_status: Database['public']['
 
     if (emailError) {
       console.error('Order status email invocation failed:', emailError.message)
-    } else if (!data?.sent) {
+      return false
+    }
+    if (!data?.sent) {
       console.warn('Order status email was not sent:', data)
+      return false
     }
   }
+  return true
 }
 
 export async function rejectAdminOrder(id: string) {
