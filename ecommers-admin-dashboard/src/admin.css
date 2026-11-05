@@ -308,3 +308,35 @@
 .admin-action-menu__panel { border-radius: 7px; }
 .admin-action-menu__panel button { border-radius: 4px; min-height: 36px; }
 .admin-sidebar-toggle { flex: 0 0 auto; }
+
+.admin-brand .admin-sidebar-toggle--brand {
+  margin-left: auto;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-color: #485047;
+  border-radius: 5px;
+  color: #e7e9e3;
+  background: #2a3029;
+}
+.admin-brand .admin-sidebar-toggle--brand:hover {
+  border-color: #c9876c;
+  color: #fff;
+  background: #363d35;
+}
+.admin-app--collapsed .admin-brand {
+  justify-content: space-between;
+  gap: 5px;
+}
+.admin-app--collapsed .admin-brand .admin-sidebar-toggle--brand {
+  margin-left: 0;
+  width: 32px;
+  flex-basis: 32px;
+}
+@media(max-width:900px) {
+  .admin-brand .admin-sidebar-toggle--brand { display: none; }
+}
+@media(min-width:761px) and (max-width:1500px) {
+  .admin-products-table tbody tr { min-height: 100%; }
+  .admin-products-table tbody td[data-label="Actions"] { position: relative; z-index: 2; }
+}
