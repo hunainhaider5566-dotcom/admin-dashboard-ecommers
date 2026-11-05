@@ -459,7 +459,7 @@ export async function getAdminOrderDetail(id: string) {
 
 export type AdminDeliveryTiming = { expected_delivery_date: string; delivery_window_start?: string | null; delivery_window_end?: string | null; delivery_note?: string | null }
 
-export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status'], deliveryTiming?: AdminDeliveryTiming) {
+export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status'], deliveryTiming?: AdminDeliveryTiming, paymentStatus?: 'paid' | 'unpaid') {
   const client = getSupabase()
   if (order_status === 'confirmed') {
     if (!deliveryTiming?.expected_delivery_date) throw new Error('Delivery date is required before confirming an order.')
@@ -476,7 +476,7 @@ export async function updateOrder(id: string, order_status: Database['public']['
     })
     assertError(error)
   } else {
-    const update = order_status === 'delivered' ? { order_status, payment_status: 'paid' as const } : { order_status }
+    const update = order_status === 'delivered' ? { order_status, payment_status: paymentStatus ?? 'paid' as const } : { order_status }
     const { error } = await client.from('orders').update(update).eq('id', id)
     assertError(error)
   }
