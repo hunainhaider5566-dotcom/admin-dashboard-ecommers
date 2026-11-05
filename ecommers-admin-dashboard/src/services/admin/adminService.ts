@@ -390,7 +390,7 @@ export async function listAdminOrderVendors(): Promise<AdminOrderVendor[]> {
   return (data ?? []) as AdminOrderVendor[]
 }
 
-export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc', vendorId = 'all'): Promise<{ items: (AdminOrder & { vendor_names: string[] })[]; count: number }> {
+export async function listAdminOrders(search = '', status = 'all', page = 0, pageSize = 25, sort = 'created_at.desc', vendorId = 'all'): Promise<{ items: (AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]; count: number }> {
   const [column, direction] = sort.split('.')
   const allowedSorts = new Set(['created_at', 'updated_at', 'total', 'order_number', 'order_status'])
   const sortColumn = allowedSorts.has(column) ? column : 'created_at'
