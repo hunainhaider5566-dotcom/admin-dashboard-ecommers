@@ -427,19 +427,39 @@ export async function listAdminOrders(search = '', status = 'all', page = 0, pag
 export async function getAdminOrderDetail(id: string) {
   const client = getSupabase()
   const [order, items, notes, history] = await Promise.all([
-    client.from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, created_at, updated_at').eq('id', id).single(),
+    client.from('orders').select('id, order_number, customer_id, customer_name, customer_phone, customer_email, shipping_address_snapshot, customer_note, currency, subtotal, delivery_fee, discount_amount, total, order_status, payment_method, payment_status, delivery_lat, delivery_lng, delivery_location_name, delivery_location_captured_at, expected_delivery_date, delivery_window_start, delivery_window_end, delivery_note, delivery_timing_confirmed_at, delivery_timing_confirmed_by, created_at, updated_at').eq('id', id).single(),
     client.from('order_items').select('id, order_id, product_id, variant_id, seller_id, seller_name_snapshot, product_name_snapshot, sku_snapshot, variant_snapshot, product_snapshot, quantity, unit_price, line_total, vendor_fulfillment_status, tracking_number, tracking_url, vendor_note, vendor_updated_at, created_at').eq('order_id', id).order('created_at').limit(100),
     client.from('admin_order_notes').select('id, order_id, created_by, note, created_at').eq('order_id', id).order('created_at', { ascending: false }).limit(100),
     client.from('admin_audit_logs').select('id, action, entity, entity_id, details, created_at').eq('entity', 'orders').eq('entity_id', id).order('created_at', { ascending: false }).limit(100),
   ])
   assertError(order.error); assertError(items.error)
+  const productIds = [...new Set((items.data ?? []).map((item) => item.product_id).filter((value): value is string => Boolean(value)))]
+  const productRows = productIds.length ? await (client as any).from('products').select('id, food_product_type, categories(name)').in('id', productIds) : { data: [], error: null }
+  assertError(productRows.error)
+  const productMap = new Map((productRows.data ?? []).map((product: any) => [product.id, product]))
+  const enrichedItems = (items.data ?? []).map((item) => {
+    const product = productMap.get(item.product_id)
+    const category = Array.isArray(product?.categories) ? product.categories[0] : product?.categories
+    return { ...item, food_product_type: product?.food_product_type ?? null, product_category_name: category?.name ?? null }
+  })
   const warnings = [notes.error && `Admin notes unavailable: ${notes.error.message}`, history.error && `Status history unavailable: ${history.error.message}`].filter((message): message is string => Boolean(message))
-  return { order: order.data as AdminOrder, items: (items.data ?? []) as AdminOrderItem[], notes: notes.data ?? [], history: history.data ?? [], warnings }
+  return { order: order.data as AdminOrder, items: enrichedItems, notes: notes.data ?? [], history: history.data ?? [], warnings }
 }
 
-export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status']) {
+export type AdminDeliveryTiming = { expected_delivery_date: string; delivery_window_start?: string | null; delivery_window_end?: string | null; delivery_note?: string | null }
+
+export async function updateOrder(id: string, order_status: Database['public']['Tables']['orders']['Row']['order_status'], deliveryTiming?: AdminDeliveryTiming) {
   const client = getSupabase()
   if (order_status === 'confirmed') {
+    if (!deliveryTiming?.expected_delivery_date) throw new Error('Delivery date is required before confirming an order.')
+    const { error: timingError } = await client.from('orders').update({
+      expected_delivery_date: deliveryTiming.expected_delivery_date,
+      delivery_window_start: deliveryTiming.delivery_window_start ?? null,
+      delivery_window_end: deliveryTiming.delivery_window_end ?? null,
+      delivery_note: deliveryTiming.delivery_note?.trim() || null,
+      delivery_timing_confirmed_at: new Date().toISOString(),
+    }).eq('id', id)
+    assertError(timingError)
     const { error } = await (client as any).rpc('admin_confirm_customer_order', {
       p_order_id: id, p_decision: 'confirmed', p_note: 'Confirmed after marketplace phone verification.',
     })
@@ -449,7 +469,6 @@ export async function updateOrder(id: string, order_status: Database['public']['
     assertError(error)
   }
 
-  // Send an email for every customer-visible lifecycle transition.
   if (['confirmed', 'processing', 'shipped', 'delivered', 'cancelled'].includes(order_status)) {
     const { data: updatedOrder, error: lookupError } = await (client as any).from('orders').select('confirmation_status').eq('id', id).maybeSingle()
     assertError(lookupError)
@@ -457,15 +476,8 @@ export async function updateOrder(id: string, order_status: Database['public']['
     const { data, error: emailError } = await client.functions.invoke('commerce-email', {
       body: { event: 'order_status', order_id: id, status: emailStatus },
     })
-
-    if (emailError) {
-      console.error('Order status email invocation failed:', emailError.message)
-      return false
-    }
-    if (!data?.sent) {
-      console.warn('Order status email was not sent:', data)
-      return false
-    }
+    if (emailError) { console.error('Order status email invocation failed:', emailError.message); return false }
+    if (!data?.sent) { console.warn('Order status email was not sent:', data); return false }
   }
   return true
 }
