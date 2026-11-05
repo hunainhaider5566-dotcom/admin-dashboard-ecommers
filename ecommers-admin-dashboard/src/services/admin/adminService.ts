@@ -436,7 +436,7 @@ export async function getAdminOrderDetail(id: string) {
   const productIds = [...new Set((items.data ?? []).map((item) => item.product_id).filter((value): value is string => Boolean(value)))]
   const productRows = productIds.length ? await (client as any).from('products').select('id, food_product_type, categories(name)').in('id', productIds) : { data: [], error: null }
   assertError(productRows.error)
-  const productMap = new Map((productRows.data ?? []).map((product: any) => [product.id, product]))
+  const productMap = new Map<string, any>((productRows.data ?? []).map((product: any) => [String(product.id), product]))
   const enrichedItems = (items.data ?? []).map((item) => {
     const product = productMap.get(item.product_id)
     const category = Array.isArray(product?.categories) ? product.categories[0] : product?.categories
