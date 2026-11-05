@@ -454,6 +454,13 @@
 .food-timing-to{padding-bottom:14px;color:#989990;text-align:center;font-size:12px;font-weight:600}
 .food-timing-hint{display:flex;align-items:flex-start;gap:10px;margin-top:20px;padding:12px 13px;border:1px solid #e4e9dd;border-radius:10px;color:#5d6855;background:#f6f8f2;font-size:11px;line-height:1.55}
 .food-timing-hint__dot{width:7px;height:7px;flex:0 0 7px;margin-top:4px;border-radius:50%;background:#718464}
+.food-timing-unpaid-option{display:flex;align-items:flex-start;gap:11px;padding:13px;border:1px solid #e8d8c9;border-radius:10px;background:#fffaf5;color:#493b31;cursor:pointer}
+.food-timing-unpaid-option input{width:17px;height:17px;flex:0 0 17px;margin:2px 0 0;accent-color:#a66a4e}
+.food-timing-unpaid-option span{display:grid;gap:3px}
+.food-timing-unpaid-option strong{font-size:12px;font-weight:800}
+.food-timing-unpaid-option small{color:#82766b;font-size:11px;line-height:1.45}
+.food-timing-field textarea{width:100%;min-width:0;min-height:84px;padding:12px 13px;border:1px solid #deded5;border-radius:9px;outline:none;resize:vertical;color:#272d25;background:#fff;font:inherit;font-size:13px;font-weight:550}
+.food-timing-field textarea:focus{border-color:#a66a4e;box-shadow:0 0 0 3px rgba(166,106,78,.12)}
 .food-timing-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:19px;border-top:1px solid #eeece5}
 .food-timing-actions .admin-button{min-height:44px;border-radius:9px}
 .food-timing-submit{min-width:205px;box-shadow:0 5px 14px rgba(153,86,59,.16)}
