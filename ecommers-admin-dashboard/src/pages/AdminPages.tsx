@@ -509,7 +509,7 @@ function Orders() {
     try {
       await saveDeliveryCollection(order.id, amounts)
       if (isPartialCollection) await addOrderNote(order.id, `Partial cash collection: PKR ${collected.toLocaleString('en-PK')} received out of PKR ${orderTotal.toLocaleString('en-PK')}. Outstanding: PKR ${(orderTotal - collected).toLocaleString('en-PK')}. Reason: ${deliveryCollectionReason.trim()}`)
-      const paymentStatus = isPartialCollection ? 'unpaid' : 'paid'
+      const paymentStatus = isPartialCollection ? 'pending' : 'paid'
       const emailSent = await updateOrder(order.id, 'delivered', undefined, paymentStatus)
       setItems((current: (AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]) => current.map((row) => row.id === order.id ? { ...row, order_status: 'delivered', payment_status: paymentStatus } : row))
       setDeliveryCollectionTarget(null)
