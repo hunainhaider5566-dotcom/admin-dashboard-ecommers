@@ -413,15 +413,23 @@ export async function listAdminOrders(search = '', status = 'all', page = 0, pag
   assertError(error)
   const rows = (data ?? []) as AdminOrder[]
   const orderIds = rows.map((row) => row.id)
-  const { data: orderItems, error: orderItemsError } = orderIds.length ? await client.from('order_items').select('order_id, seller_id').in('order_id', orderIds).limit(10000) : { data: [], error: null }
+  const { data: orderItems, error: orderItemsError } = orderIds.length ? await client.from('order_items').select('order_id, seller_id, product_id').in('order_id', orderIds).limit(10000) : { data: [], error: null }
   assertError(orderItemsError)
   const sellerIds = [...new Set((orderItems ?? []).map((item) => item.seller_id).filter((id): id is string => Boolean(id)))]
   const { data: sellers, error: sellersError } = sellerIds.length ? await client.from('seller_profiles').select('id, shop_name').in('id', sellerIds).limit(1000) : { data: [], error: null }
   assertError(sellersError)
+  const productIds = [...new Set((orderItems ?? []).map((item) => item.product_id).filter((id): id is string => Boolean(id)))]
+  const { data: orderProducts, error: orderProductsError } = productIds.length ? await (client as any).from('products').select('id, food_product_type, categories(name)').in('id', productIds) : { data: [], error: null }
+  assertError(orderProductsError)
+  const foodProductIds = new Set((orderProducts ?? []).filter((product: any) => {
+    const category = Array.isArray(product.categories) ? product.categories[0] : product.categories
+    return /food|grocery/i.test(category?.name ?? '') || Boolean(product.food_product_type)
+  }).map((product: any) => String(product.id)))
+  const foodOrders = new Set((orderItems ?? []).filter((item) => item.product_id && foodProductIds.has(item.product_id)).map((item) => item.order_id))
   const sellerNames = new Map((sellers ?? []).map((seller) => [seller.id, seller.shop_name]))
   const namesByOrder = new Map<string, Set<string>>()
   for (const item of orderItems ?? []) { if (!item.seller_id) continue; const name = sellerNames.get(item.seller_id); if (!name) continue; const names = namesByOrder.get(item.order_id) ?? new Set<string>(); names.add(name); namesByOrder.set(item.order_id, names) }
-  return { items: rows.map((row) => ({ ...row, vendor_names: [...(namesByOrder.get(row.id) ?? [])] })), count: count ?? 0 }
+  return { items: rows.map((row) => ({ ...row, vendor_names: [...(namesByOrder.get(row.id) ?? [])], has_food_items: foodOrders.has(row.id) })), count: count ?? 0 }
 }
 
 export async function getAdminOrderDetail(id: string) {
