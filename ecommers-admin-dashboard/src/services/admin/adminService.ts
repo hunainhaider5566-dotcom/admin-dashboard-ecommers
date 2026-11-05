@@ -419,12 +419,15 @@ export async function listAdminOrders(search = '', status = 'all', page = 0, pag
   const { data: sellers, error: sellersError } = sellerIds.length ? await client.from('seller_profiles').select('id, shop_name').in('id', sellerIds).limit(1000) : { data: [], error: null }
   assertError(sellersError)
   const productIds = [...new Set((orderItems ?? []).map((item) => item.product_id).filter((id): id is string => Boolean(id)))]
-  const { data: orderProducts, error: orderProductsError } = productIds.length ? await (client as any).from('products').select('id, food_product_type, categories(name)').in('id', productIds) : { data: [], error: null }
+  const { data: orderProducts, error: orderProductsError } = productIds.length ? await (client as any).from('products').select('id, category_id, food_product_type').in('id', productIds) : { data: [], error: null }
   assertError(orderProductsError)
-  const foodProductIds = new Set((orderProducts ?? []).filter((product: any) => {
-    const category = Array.isArray(product.categories) ? product.categories[0] : product.categories
-    return /food|grocery/i.test(category?.name ?? '') || Boolean(product.food_product_type)
-  }).map((product: any) => String(product.id)))
+  const categoryIds = [...new Set((orderProducts ?? []).map((product: any) => product.category_id).filter((id: string | null): id is string => Boolean(id)))]
+  const { data: orderCategories, error: orderCategoriesError } = categoryIds.length ? await client.from('categories').select('id, name').in('id', categoryIds) : { data: [], error: null }
+  assertError(orderCategoriesError)
+  const categoryNames = new Map((orderCategories ?? []).map((category) => [category.id, category.name]))
+  const foodProductIds = new Set((orderProducts ?? []).filter((product: any) =>
+    /food|grocery/i.test(categoryNames.get(product.category_id) ?? '') || Boolean(product.food_product_type)
+  ).map((product: any) => String(product.id)))
   const foodOrders = new Set((orderItems ?? []).filter((item) => item.product_id && foodProductIds.has(item.product_id)).map((item) => item.order_id))
   const sellerNames = new Map((sellers ?? []).map((seller) => [seller.id, seller.shop_name]))
   const namesByOrder = new Map<string, Set<string>>()
@@ -462,8 +465,8 @@ export async function updateOrder(id: string, order_status: Database['public']['
     if (!deliveryTiming?.expected_delivery_date) throw new Error('Delivery date is required before confirming an order.')
     const { error: timingError } = await client.from('orders').update({
       expected_delivery_date: deliveryTiming.expected_delivery_date,
-      delivery_window_start: deliveryTiming.delivery_window_start ?? null,
-      delivery_window_end: deliveryTiming.delivery_window_end ?? null,
+      delivery_window_start: deliveryTiming.delivery_window_start ?? '09:00',
+      delivery_window_end: deliveryTiming.delivery_window_end ?? '21:00',
       delivery_note: deliveryTiming.delivery_note?.trim() || null,
       delivery_timing_confirmed_at: new Date().toISOString(),
     }).eq('id', id)
