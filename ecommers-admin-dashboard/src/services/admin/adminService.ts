@@ -415,10 +415,10 @@ export async function listAdminOrders(search = '', status = 'all', page = 0, pag
   const orderIds = rows.map((row) => row.id)
   const { data: orderItems, error: orderItemsError } = orderIds.length ? await client.from('order_items').select('order_id, seller_id, product_id').in('order_id', orderIds).limit(10000) : { data: [], error: null }
   assertError(orderItemsError)
-  const sellerIds = [...new Set((orderItems ?? []).map((item) => item.seller_id).filter((id): id is string => Boolean(id)))]
+  const sellerIds: string[] = [...new Set<string>((orderItems ?? []).map((item: any) => item.seller_id as string | null).filter((id: string | null): id is string => Boolean(id)))]
   const { data: sellers, error: sellersError } = sellerIds.length ? await client.from('seller_profiles').select('id, shop_name').in('id', sellerIds).limit(1000) : { data: [], error: null }
   assertError(sellersError)
-  const productIds = [...new Set((orderItems ?? []).map((item) => item.product_id).filter((id): id is string => Boolean(id)))]
+  const productIds: string[] = [...new Set<string>((orderItems ?? []).map((item: any) => item.product_id as string | null).filter((id: string | null): id is string => Boolean(id)))]
   const { data: orderProducts, error: orderProductsError } = productIds.length ? await (client as any).from('products').select('id, category_id, food_product_type').in('id', productIds) : { data: [], error: null }
   assertError(orderProductsError)
   const categoryIds: string[] = [...new Set<string>((orderProducts ?? []).map((product: any) => product.category_id as string | null).filter((id: string | null): id is string => Boolean(id)))]
