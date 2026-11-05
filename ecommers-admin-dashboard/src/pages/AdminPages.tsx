@@ -562,9 +562,9 @@ function Inventory() {
   const [variantOptions, setVariantOptions] = useState<AdminVariant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [quantity, setQuantity] = useState('')
-  const [note, setNote] = useState('')
+  const [editingProductId, setEditingProductId] = useState<string | null>(null)
+  const [editQuantities, setEditQuantities] = useState<Record<string, string>>({})
+  const [editNote, setEditNote] = useState('')
   const [saving, setSaving] = useState(false)
   const [addOpen, setAddOpen] = useState(false)
   const [selectedProductId, setSelectedProductId] = useState('')
@@ -584,15 +584,16 @@ function Inventory() {
     if (selectedProductId) void getAdminProductEditor(selectedProductId).then((detail) => { if (active) setVariantOptions(detail?.variants ?? []) }).catch((cause: unknown) => { if (active) setError(cause instanceof Error ? cause.message : 'Product variants could not be loaded.') })
     return () => { active = false }
   }, [selectedProductId])
-  function startAdjust(item: AdminInventory) { setEditingId(item.id); setQuantity(String(item.quantity)); setNote('') }
-  async function saveAdjustment(event: FormEvent<HTMLFormElement>, item: AdminInventory) {
+  const productGroups = Object.values(items.reduce<Record<string, { productId: string; productName: string; rows: AdminInventory[] }>>((groups, item) => { const group = groups[item.product_id] ?? { productId: item.product_id, productName: item.product_name, rows: [] }; group.rows.push(item); groups[item.product_id] = group; return groups }, {}))
+  function startAdjust(group: { productId: string; rows: AdminInventory[] }) { setEditingProductId(group.productId); setEditQuantities(Object.fromEntries(group.rows.map((row) => [row.id, String(row.quantity)]))); setEditNote('') }
+  async function saveAdjustment(event: FormEvent<HTMLFormElement>, rows: AdminInventory[]) {
     event.preventDefault()
-    const value = Number(quantity)
-    if (!Number.isInteger(value) || value < 0) { setError('Quantity must be a whole number of zero or more.'); return }
-    if (!note.trim()) { setError('Add a reason for this stock adjustment.'); return }
+    if (!editNote.trim()) { setError('Add one reason for this stock adjustment.'); return }
+    const changes = rows.map((row) => ({ row, value: Number(editQuantities[row.id]) }))
+    if (changes.some(({ value }) => !Number.isInteger(value) || value < 0)) { setError('Every variant quantity must be a whole number of zero or more.'); return }
     setSaving(true); setError(null)
-    try { await adjustInventory(item.id, value, note.trim()); setEditingId(null); setNote(''); push('Inventory updated.'); load() }
-    catch (cause) { setError(cause instanceof Error ? cause.message : 'Inventory update failed.') }
+    try { for (const change of changes) await adjustInventory(change.row.id, change.value, editNote.trim()); setEditingProductId(null); setEditNote(''); push('All product variant quantities updated.'); load() }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Inventory update failed. Some earlier rows may already have been saved; refresh before retrying.') }
     finally { setSaving(false) }
   }
   async function addOrUpdateStock(event: FormEvent<HTMLFormElement>) {
@@ -626,7 +627,8 @@ function Inventory() {
     </form>}
     {error && <ErrorState message={error} retry={load}/>}
     {loading ? <Loading/> : items.length === 0 ? <Empty title="No inventory records" detail="Use Add / update stock to create the first base-product or variant stock record." action={<button type="button" className="admin-button" onClick={() => setAddOpen(true)}><Plus size={15}/> Add inventory</button>}/> :
-      <div className="admin-table-wrap"><TableTools/><table className="admin-table"><thead><tr><th>Product</th><th>Variant</th><th>Quantity</th><th>Threshold</th><th>Updated</th><th>Adjust</th></tr></thead><tbody>{items.map((item) => <tr key={item.id}><td><strong>{item.product_name}</strong></td><td>{item.variant_name ?? 'Base product'}</td><td><strong className={item.low_stock_threshold !== null && item.quantity <= item.low_stock_threshold ? 'admin-low-stock' : ''}>{item.quantity}</strong></td><td>{item.low_stock_threshold ?? '—'}</td><td>{formatDate(item.updated_at)}</td><td>{editingId === item.id ? <form className="admin-inline-adjust" onSubmit={(event) => void saveAdjustment(event, item)}><label><span className="sr-only">New quantity</span><input type="number" min="0" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)}/></label><label><span className="sr-only">Adjustment reason</span><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="Reason" required/></label><button type="submit" className="admin-small-button" disabled={saving}>{saving ? 'Saving…' : 'Save'}</button><button type="button" className="admin-small-button" disabled={saving} onClick={() => setEditingId(null)}>Cancel</button></form> : <button type="button" className="admin-small-button" onClick={() => startAdjust(item)}>Adjust</button>}</td></tr>)}</tbody></table></div>}
+      <div className="admin-table-wrap"><TableTools/><table className="admin-table"><thead><tr><th>Product</th><th>Variants</th><th>Total quantity</th><th>Updated</th><th>Adjust</th></tr></thead><tbody>{productGroups.map((group) => { const total = group.rows.reduce((sum, row) => sum + Number(row.quantity), 0); const updated = group.rows.reduce((latest, row) => row.updated_at > latest ? row.updated_at : latest, group.rows[0].updated_at); const low = group.rows.some((row) => row.low_stock_threshold !== null && row.quantity <= row.low_stock_threshold); return <tr key={group.productId}><td><strong>{group.productName}</strong></td><td>{group.rows.length === 1 && !group.rows[0].variant_id ? 'Default' : <><strong>{group.rows.length} variants</strong><small>{group.rows.map((row) => row.variant_name ?? 'Default').join(' · ')}</small></>}</td><td><strong className={low ? 'admin-low-stock' : ''}>{total}</strong></td><td>{formatDate(updated)}</td><td><button type="button" className="admin-small-button" onClick={() => startAdjust(group)}>Edit stock</button></td></tr> })}</tbody></table></div>}
+    {editingProductId && (() => { const group = productGroups.find((entry) => entry.productId === editingProductId); if (!group) return null; return <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setEditingProductId(null) }}><section className="admin-modal" role="dialog" aria-modal="true" aria-labelledby="inventory-edit-title"><div className="admin-panel-heading"><div><p className="admin-kicker">Inventory adjustment</p><h3 id="inventory-edit-title">{group.productName}</h3><p className="admin-copy">Edit every variant quantity together. Each variant remains a separate stock record.</p></div><button type="button" className="admin-icon-button" aria-label="Close inventory editor" disabled={saving} onClick={() => setEditingProductId(null)}><X size={18}/></button></div><form className="admin-form" onSubmit={(event) => void saveAdjustment(event, group.rows)}><div className="admin-form-grid">{group.rows.map((row) => <label key={row.id}>{row.variant_name ?? 'Default product'}<input type="number" min="0" step="1" required value={editQuantities[row.id] ?? '0'} onChange={(event) => setEditQuantities((current) => ({ ...current, [row.id]: event.target.value }))}/><small>Current: {row.quantity} · Threshold: {row.low_stock_threshold ?? 'Not set'}</small></label>)}<label className="admin-form-span">Adjustment reason<input required value={editNote} onChange={(event) => setEditNote(event.target.value)} placeholder="e.g. Stock count / supplier restock"/></label></div><div className="admin-form-actions"><button type="button" className="admin-button admin-button--outline" disabled={saving} onClick={() => setEditingProductId(null)}>Cancel</button><button type="submit" className="admin-button" disabled={saving}>{saving ? 'Saving…' : 'Save all quantities'}</button></div></form></section></div> })()}
   </section>
 }
 function Sellers() {
