@@ -422,7 +422,7 @@ export async function listAdminOrders(search = '', status = 'all', page = 0, pag
   const { data: orderProducts, error: orderProductsError } = productIds.length ? await (client as any).from('products').select('id, category_id, food_product_type').in('id', productIds) : { data: [], error: null }
   assertError(orderProductsError)
   const categoryIds: string[] = [...new Set<string>((orderProducts ?? []).map((product: any) => product.category_id as string | null).filter((id: string | null): id is string => Boolean(id)))]
-  const { data: orderCategories, error: orderCategoriesError } = categoryIds.length ? await client.from('categories').select('id, name').in('id', categoryIds) : { data: [], error: null }
+  const { data: orderCategories, error: orderCategoriesError } = categoryIds.length ? await (client as any).from('categories').select('id, name').in('id', categoryIds as string[]) : { data: [], error: null }
   assertError(orderCategoriesError)
   const categoryNames = new Map((orderCategories ?? []).map((category) => [category.id, category.name]))
   const foodProductIds = new Set((orderProducts ?? []).filter((product: any) =>
