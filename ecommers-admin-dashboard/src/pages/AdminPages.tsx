@@ -455,7 +455,7 @@ function Pagination({ page, pageSize, total, onPage, onPageSize }: { page: numbe
 }
 
 function Orders() {
-  const { push } = useToast(); const [items, setItems] = useState<(AdminOrder & { vendor_names: string[] })[]>([]); const [confirmationTarget, setConfirmationTarget] = useState<(AdminOrder & { vendor_names: string[] }) | null>(null); const [deliveryDate, setDeliveryDate] = useState(new Date().toLocaleDateString('en-CA')); const [deliveryStart, setDeliveryStart] = useState(''); const [deliveryEnd, setDeliveryEnd] = useState(''); const [deliveryNote, setDeliveryNote] = useState(''); const [search, setSearch] = useState(''); const [status, setStatus] = useState('all'); const [vendorId, setVendorId] = useState('all'); const [vendors, setVendors] = useState<AdminOrderVendor[]>([]); const [sort, setSort] = useState('created_at.desc'); const [page, setPage] = useState(0); const [pageSize, setPageSize] = useState(25); const [total, setTotal] = useState(0); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true); const [updatingIds, setUpdatingIds] = useState<string[]>([])
+  const { push } = useToast(); const [items, setItems] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]>([]); const [confirmationTarget, setConfirmationTarget] = useState<(AdminOrder & { vendor_names: string[] }) | null>(null); const [deliveryDate, setDeliveryDate] = useState(new Date().toLocaleDateString('en-CA')); const [deliveryStart, setDeliveryStart] = useState(''); const [deliveryEnd, setDeliveryEnd] = useState(''); const [deliveryNote, setDeliveryNote] = useState(''); const [search, setSearch] = useState(''); const [status, setStatus] = useState('all'); const [vendorId, setVendorId] = useState('all'); const [vendors, setVendors] = useState<AdminOrderVendor[]>([]); const [sort, setSort] = useState('created_at.desc'); const [page, setPage] = useState(0); const [pageSize, setPageSize] = useState(25); const [total, setTotal] = useState(0); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true); const [updatingIds, setUpdatingIds] = useState<string[]>([])
   const load = (quiet = false) => { if (!quiet) setLoading(true); setError(null); void listAdminOrders(search, status, page, pageSize, sort, vendorId).then((result) => { setItems((current) => mergeRowsById(current, result.items)); setTotal(result.count) }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Orders could not be loaded.')).finally(() => { if (!quiet) setLoading(false) }) }
   useEffect(load, [search, status, vendorId, sort, page, pageSize]); useAutoRefresh(load)
   useEffect(() => { void listAdminOrderVendors().then(setVendors).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Vendors could not be loaded.')) }, [])
@@ -463,12 +463,10 @@ function Orders() {
     if (next === order.order_status || updatingIds.includes(order.id)) return
     if (next === 'confirmed' && !deliveryTiming) {
       try {
-        const detail = await getAdminOrderDetail(order.id)
-        const isFoodOrder = detail.items.some((item: any) => /food|grocery/i.test(item.product_category_name ?? '') || Boolean(item.food_product_type))
-        if (isFoodOrder) { setDeliveryDate(new Date().toLocaleDateString('en-CA')); setDeliveryStart(''); setDeliveryEnd(''); setDeliveryNote(''); setConfirmationTarget(order); return }
+        if (order.has_food_items) { setDeliveryDate(new Date().toLocaleDateString('en-CA')); setDeliveryStart(''); setDeliveryEnd(''); setDeliveryNote(''); setConfirmationTarget(order); return }
         const eta = new Date(); eta.setDate(eta.getDate() + 7)
         deliveryTiming = { expected_delivery_date: eta.toLocaleDateString('en-CA'), delivery_note: 'Delivery within 7 days.' }
-      } catch (cause) { push(cause instanceof Error ? cause.message : 'Order items could not be checked before confirmation.', 'error'); return }
+      } catch (cause) { push(cause instanceof Error ? cause.message : 'Order could not be checked before confirmation.', 'error'); return }
     }
     if (next === 'cancelled' && !window.confirm(`Cancel order ${order.order_number}?`)) return
     const previousStatus = order.order_status
