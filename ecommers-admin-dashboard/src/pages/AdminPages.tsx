@@ -456,7 +456,7 @@ function Pagination({ page, pageSize, total, onPage, onPageSize }: { page: numbe
 
 function Orders() {
   const { push } = useToast(); const [items, setItems] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]>([]); const [confirmationTarget, setConfirmationTarget] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean }) | null>(null); const [deliveryDate, setDeliveryDate] = useState(new Date().toLocaleDateString('en-CA')); const [deliveryStart, setDeliveryStart] = useState(''); const [deliveryEnd, setDeliveryEnd] = useState(''); const [deliveryNote, setDeliveryNote] = useState(''); const [search, setSearch] = useState(''); const [status, setStatus] = useState('all'); const [vendorId, setVendorId] = useState('all'); const [vendors, setVendors] = useState<AdminOrderVendor[]>([]); const [sort, setSort] = useState('created_at.desc'); const [page, setPage] = useState(0); const [pageSize, setPageSize] = useState(25); const [total, setTotal] = useState(0); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true); const [updatingIds, setUpdatingIds] = useState<string[]>([]); const [deliveryCollectionTarget, setDeliveryCollectionTarget] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean }) | null>(null); const [deliveryCollectionItems, setDeliveryCollectionItems] = useState<{ id: string; name: string; quantity: number; amount: string }[]>([])
-  const load = (quiet = false) => { if (!quiet) setLoading(true); setError(null); void listAdminOrders(search, status, page, pageSize, sort, vendorId).then((result) => { setItems((current) => mergeRowsById(current, result.items)); setTotal(result.count) }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Orders could not be loaded.')).finally(() => { if (!quiet) setLoading(false) }) }
+  const load = (quiet = false) => { if (!quiet) setLoading(true); setError(null); void listAdminOrders(search, status, page, pageSize, sort, vendorId).then((result) => { setItems((current: (AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]) => mergeRowsById<AdminOrder & { vendor_names: string[]; has_food_items: boolean }>(current, result.items)); setTotal(result.count) }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Orders could not be loaded.')).finally(() => { if (!quiet) setLoading(false) }) }
   useEffect(load, [search, status, vendorId, sort, page, pageSize]); useAutoRefresh(load)
   useEffect(() => { void listAdminOrderVendors().then(setVendors).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Vendors could not be loaded.')) }, [])
   async function changeStatus(order: AdminOrder & { vendor_names: string[]; has_food_items: boolean }, next: Database['public']['Tables']['orders']['Row']['order_status'], deliveryTiming?: { expected_delivery_date: string; delivery_window_start?: string | null; delivery_window_end?: string | null; delivery_note?: string | null }) {
@@ -480,7 +480,7 @@ function Orders() {
     if (next === 'cancelled' && !window.confirm(`Cancel order ${order.order_number}?`)) return
     const previousStatus = order.order_status
     setUpdatingIds((current) => [...current, order.id])
-    setItems((current) => current.map((item) => item.id === order.id ? { ...item, order_status: next } : item))
+    setItems((current: (AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]) => current.map((item) => item.id === order.id ? { ...item, order_status: next } : item))
     try {
       const emailSent = await updateOrder(order.id, next, deliveryTiming)
       const messages: Record<string, string> = { confirmed: 'Order confirmed after customer verification.', processing: 'Order is being prepared.', shipped: 'Order has been shipped.', delivered: 'Order marked as delivered.', cancelled: 'Order cancelled.' }
@@ -488,7 +488,7 @@ function Orders() {
       if (next === 'confirmed' && deliveryTiming) setConfirmationTarget(null)
       else push('Order status updated, but customer email was not sent. Check SMTP secrets and Edge Function logs.', 'error')
     } catch (cause) {
-      setItems((current) => current.map((item) => item.id === order.id ? { ...item, order_status: previousStatus } : item))
+      setItems((current: (AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]) => current.map((item) => item.id === order.id ? { ...item, order_status: previousStatus } : item))
       push(cause instanceof Error ? cause.message : 'The database rejected this transition.', 'error')
     } finally {
       setUpdatingIds((current) => current.filter((id) => id !== order.id))
@@ -505,7 +505,7 @@ function Orders() {
     try {
       await saveDeliveryCollection(order.id, amounts)
       const emailSent = await updateOrder(order.id, 'delivered')
-      setItems((current) => current.map((row) => row.id === order.id ? { ...row, order_status: 'delivered', payment_status: 'paid' } : row))
+      setItems((current: (AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]) => current.map((row) => row.id === order.id ? { ...row, order_status: 'delivered', payment_status: 'paid' } : row))
       setDeliveryCollectionTarget(null)
       push(emailSent ? 'Delivery recorded. Product-wise cash collection saved and order marked paid.' : 'Delivery and collection saved, but customer email could not be sent.', emailSent ? 'success' : 'error')
     } catch (cause) { push(cause instanceof Error ? cause.message : 'Delivery collection could not be saved.', 'error') }
