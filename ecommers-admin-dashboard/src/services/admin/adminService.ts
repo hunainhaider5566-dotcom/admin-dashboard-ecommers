@@ -476,7 +476,8 @@ export async function updateOrder(id: string, order_status: Database['public']['
     })
     assertError(error)
   } else {
-    const { error } = await client.from('orders').update({ order_status }).eq('id', id)
+    const update = order_status === 'delivered' ? { order_status, payment_status: 'paid' as const } : { order_status }
+    const { error } = await client.from('orders').update(update).eq('id', id)
     assertError(error)
   }
 
@@ -803,4 +804,14 @@ export async function setAdminVendorLock(id: string, locked: boolean, reason?: s
   const { data, error } = await getSupabase().rpc('admin_set_vendor_lock', { p_seller_id: id, p_locked: locked, p_reason: reason ?? null })
   assertError(error)
   return data as AdminSeller
+}
+
+
+export async function saveDeliveryCollection(orderId: string, amounts: { id: string; amount: number }[]) {
+  const client = getSupabase() as any
+  for (const item of amounts) {
+    if (!Number.isFinite(item.amount) || item.amount < 0) throw new Error('Enter a valid collected amount for every product.')
+    const { error } = await client.from('order_items').update({ collected_amount: item.amount, collected_at: new Date().toISOString() }).eq('id', item.id).eq('order_id', orderId)
+    assertError(error)
+  }
 }
