@@ -117,12 +117,18 @@ function AdminShell({ children }: { children: ReactNode }) {
   }, [])
   async function logout() { await signOut(); navigate('/login') }
   async function openNotification(item: AdminNotification) {
-    if (!item.read_at) {
-      try { await markAdminNotificationRead(item.id); setNotifications((current) => current.map((row) => row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row)) }
-      catch (cause) { setNotificationError(cause instanceof Error ? cause.message : 'Notification could not be marked read.') }
+    const path = notificationSectionPath(item)
+    if (path) await markSectionRead(path)
+    else if (!item.read_at) {
+      try {
+        await markAdminNotificationRead(item.id)
+        setNotifications((current) => current.map((row) => row.id === item.id ? { ...row, read_at: new Date().toISOString() } : row))
+      } catch (cause) {
+        setNotificationError(cause instanceof Error ? cause.message : 'Notification could not be marked read.')
+      }
     }
     setNotificationsOpen(false)
-    navigate(notificationSectionPath(item) ?? '/admin')
+    navigate(path ?? '/admin')
   }
   async function markAllRead() {
     try { await markAllAdminNotificationsRead(); const now = new Date().toISOString(); setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? now }))) }
