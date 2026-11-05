@@ -431,3 +431,33 @@
   .admin-products-table tbody td[data-label="Product"],
   .admin-products-table tbody td[data-label="Actions"] { grid-column: auto !important; }
 }
+
+
+/* Food order delivery timing modal */
+.food-timing-backdrop{padding:22px;overflow-y:auto;background:rgba(24,29,23,.66);backdrop-filter:blur(7px)}
+.food-timing-modal{width:min(560px,100%);max-height:calc(100vh - 44px);overflow-y:auto;padding:30px;border:1px solid #e8e1d7;border-radius:18px;background:#fffefa;box-shadow:0 28px 90px rgba(15,22,14,.3);animation:foodTimingIn .18s ease-out}
+.food-timing-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.food-timing-icon{display:grid;place-items:center;width:52px;height:52px;border:1px solid #ead8ce;border-radius:15px;color:#98583e;background:#fbf0e9}
+.food-timing-modal>.admin-kicker{margin:0 0 8px;color:#a05f43;font-size:10px;font-weight:800;letter-spacing:.13em}
+.food-timing-modal h3{max-width:none;margin:0;color:#252b23;font-size:27px;line-height:1.18;letter-spacing:-.035em}
+.food-timing-description{margin:11px 0 24px;color:#70736b;font-size:13px;line-height:1.75}
+.food-timing-description strong{color:#343a31;font-weight:750}
+.food-timing-fields{display:grid;gap:17px}
+.food-timing-field{display:grid;gap:8px;min-width:0;color:#343a31;font-size:12px;font-weight:750}
+.food-timing-field>span{display:flex;align-items:center;gap:8px}
+.food-timing-field>span em{color:#92948d;font-size:10px;font-style:normal;font-weight:500}
+.food-timing-field input{width:100%;min-width:0;height:46px;padding:0 13px;border:1px solid #deded5;border-radius:9px;outline:none;color:#272d25;background:#fff;font:inherit;font-size:13px;font-weight:550;transition:border-color .15s,box-shadow .15s}
+.food-timing-field input:focus{border-color:#a66a4e;box-shadow:0 0 0 3px rgba(166,106,78,.12)}
+.food-timing-time-range{display:grid;grid-template-columns:minmax(0,1fr) 24px minmax(0,1fr);align-items:end;gap:9px}
+.food-timing-time-range label{display:grid;gap:6px;min-width:0}
+.food-timing-time-range label small{color:#85877f;font-size:10px;font-weight:650}
+.food-timing-to{padding-bottom:14px;color:#989990;text-align:center;font-size:12px;font-weight:600}
+.food-timing-hint{display:flex;align-items:flex-start;gap:10px;margin-top:20px;padding:12px 13px;border:1px solid #e4e9dd;border-radius:10px;color:#5d6855;background:#f6f8f2;font-size:11px;line-height:1.55}
+.food-timing-hint__dot{width:7px;height:7px;flex:0 0 7px;margin-top:4px;border-radius:50%;background:#718464}
+.food-timing-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:24px;padding-top:19px;border-top:1px solid #eeece5}
+.food-timing-actions .admin-button{min-height:44px;border-radius:9px}
+.food-timing-submit{min-width:205px;box-shadow:0 5px 14px rgba(153,86,59,.16)}
+.food-timing-submit:disabled{opacity:.48;box-shadow:none;cursor:not-allowed}
+@keyframes foodTimingIn{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media(max-width:560px){.food-timing-backdrop{align-items:end;padding:10px}.food-timing-modal{width:100%;max-height:calc(100dvh - 20px);padding:22px 18px;border-radius:17px}.food-timing-modal h3{font-size:23px}.food-timing-actions{flex-direction:column-reverse}.food-timing-actions .admin-button{width:100%;justify-content:center}.food-timing-submit{min-width:0}.food-timing-time-range{gap:6px}}
+@media(prefers-reduced-motion:reduce){.food-timing-modal{animation:none}}
