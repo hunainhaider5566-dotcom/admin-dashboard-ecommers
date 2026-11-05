@@ -455,11 +455,11 @@ function Pagination({ page, pageSize, total, onPage, onPageSize }: { page: numbe
 }
 
 function Orders() {
-  const { push } = useToast(); const [items, setItems] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]>([]); const [confirmationTarget, setConfirmationTarget] = useState<(AdminOrder & { vendor_names: string[] }) | null>(null); const [deliveryDate, setDeliveryDate] = useState(new Date().toLocaleDateString('en-CA')); const [deliveryStart, setDeliveryStart] = useState(''); const [deliveryEnd, setDeliveryEnd] = useState(''); const [deliveryNote, setDeliveryNote] = useState(''); const [search, setSearch] = useState(''); const [status, setStatus] = useState('all'); const [vendorId, setVendorId] = useState('all'); const [vendors, setVendors] = useState<AdminOrderVendor[]>([]); const [sort, setSort] = useState('created_at.desc'); const [page, setPage] = useState(0); const [pageSize, setPageSize] = useState(25); const [total, setTotal] = useState(0); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true); const [updatingIds, setUpdatingIds] = useState<string[]>([])
+  const { push } = useToast(); const [items, setItems] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean })[]>([]); const [confirmationTarget, setConfirmationTarget] = useState<(AdminOrder & { vendor_names: string[]; has_food_items: boolean }) | null>(null); const [deliveryDate, setDeliveryDate] = useState(new Date().toLocaleDateString('en-CA')); const [deliveryStart, setDeliveryStart] = useState(''); const [deliveryEnd, setDeliveryEnd] = useState(''); const [deliveryNote, setDeliveryNote] = useState(''); const [search, setSearch] = useState(''); const [status, setStatus] = useState('all'); const [vendorId, setVendorId] = useState('all'); const [vendors, setVendors] = useState<AdminOrderVendor[]>([]); const [sort, setSort] = useState('created_at.desc'); const [page, setPage] = useState(0); const [pageSize, setPageSize] = useState(25); const [total, setTotal] = useState(0); const [error, setError] = useState<string | null>(null); const [loading, setLoading] = useState(true); const [updatingIds, setUpdatingIds] = useState<string[]>([])
   const load = (quiet = false) => { if (!quiet) setLoading(true); setError(null); void listAdminOrders(search, status, page, pageSize, sort, vendorId).then((result) => { setItems((current) => mergeRowsById(current, result.items)); setTotal(result.count) }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Orders could not be loaded.')).finally(() => { if (!quiet) setLoading(false) }) }
   useEffect(load, [search, status, vendorId, sort, page, pageSize]); useAutoRefresh(load)
   useEffect(() => { void listAdminOrderVendors().then(setVendors).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Vendors could not be loaded.')) }, [])
-  async function changeStatus(order: AdminOrder & { vendor_names: string[] }, next: Database['public']['Tables']['orders']['Row']['order_status'], deliveryTiming?: { expected_delivery_date: string; delivery_window_start?: string | null; delivery_window_end?: string | null; delivery_note?: string | null }) {
+  async function changeStatus(order: AdminOrder & { vendor_names: string[]; has_food_items: boolean }, next: Database['public']['Tables']['orders']['Row']['order_status'], deliveryTiming?: { expected_delivery_date: string; delivery_window_start?: string | null; delivery_window_end?: string | null; delivery_note?: string | null }) {
     if (next === order.order_status || updatingIds.includes(order.id)) return
     if (next === 'confirmed' && !deliveryTiming) {
       try {
@@ -485,7 +485,7 @@ function Orders() {
       setUpdatingIds((current) => current.filter((id) => id !== order.id))
     }
   }
-  async function rejectPendingOrder(order: AdminOrder & { vendor_names: string[] }) {
+  async function rejectPendingOrder(order: AdminOrder & { vendor_names: string[]; has_food_items: boolean }) {
     if (order.order_status !== 'pending' || updatingIds.includes(order.id)) return
     if (!window.confirm(`Reject order ${order.order_number}? The customer will receive an email update.`)) return
     setUpdatingIds((current) => [...current, order.id])
