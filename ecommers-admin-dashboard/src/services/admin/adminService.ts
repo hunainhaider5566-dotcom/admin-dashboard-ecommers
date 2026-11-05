@@ -438,7 +438,7 @@ export async function getAdminOrderDetail(id: string) {
   assertError(productRows.error)
   const productMap = new Map<string, any>((productRows.data ?? []).map((product: any) => [String(product.id), product]))
   const enrichedItems = (items.data ?? []).map((item) => {
-    const product = productMap.get(item.product_id)
+    const product = item.product_id ? productMap.get(String(item.product_id)) : undefined
     const category = Array.isArray(product?.categories) ? product.categories[0] : product?.categories
     return { ...item, food_product_type: product?.food_product_type ?? null, product_category_name: category?.name ?? null }
   })
