@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { useToast } from '../../contexts/ToastContext'
+import { useAuth } from '../../contexts/AuthContext'
 import { getSupabase } from '../../lib/supabase'
 export function AdminEmailOtp() {
  const location=useLocation(),navigate=useNavigate(),{push}=useToast()
