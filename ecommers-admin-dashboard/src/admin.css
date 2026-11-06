@@ -468,3 +468,10 @@
 @keyframes foodTimingIn{from{opacity:0;transform:translateY(8px) scale(.99)}to{opacity:1;transform:translateY(0) scale(1)}}
 @media(max-width:560px){.food-timing-backdrop{align-items:end;padding:10px}.food-timing-modal{width:100%;max-height:calc(100dvh - 20px);padding:22px 18px;border-radius:17px}.food-timing-modal h3{font-size:23px}.food-timing-actions{flex-direction:column-reverse}.food-timing-actions .admin-button{width:100%;justify-content:center}.food-timing-submit{min-width:0}.food-timing-time-range{gap:6px}}
 @media(prefers-reduced-motion:reduce){.food-timing-modal{animation:none}}
+
+.admin-mfa-icon{display:grid;place-items:center;width:58px;height:58px;margin:22px auto 12px;border-radius:18px;background:#e9f5ef;color:#16734a}
+.admin-mfa-setup{margin:20px 0;padding:18px;border:1px solid #e5e7eb;border-radius:16px;text-align:center}
+.admin-mfa-setup img{display:block;width:190px;height:190px;max-width:100%;margin:0 auto 12px}
+.admin-mfa-setup p{color:#64748b;font-size:13px;line-height:1.5}
+.admin-mfa-setup label{display:grid;gap:8px;text-align:left;font-size:12px;font-weight:700}
+.admin-mfa-setup code{overflow-wrap:anywhere;padding:10px;border-radius:8px;background:#f1f5f9;font-size:12px}
