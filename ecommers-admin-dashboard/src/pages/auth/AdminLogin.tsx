@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { getSupabase } from '../../lib/supabase'
 
 export function AdminLogin() {
   const { configured, user, signIn } = useAuth()
@@ -13,7 +14,7 @@ export function AdminLogin() {
   if (user) return <Navigate to="/admin" replace />
   async function submit(event: FormEvent) {
     event.preventDefault(); setSaving(true)
-    try { await signIn(email, password); navigate('/admin') }
+    try { await signIn(email, password); const { error } = await getSupabase().auth.signInWithOtp({ email, options: { shouldCreateUser: false } }); if (error) throw error; navigate('/admin-email-otp', { replace: true, state: { email } }) }
     catch (cause) { push(cause instanceof Error ? cause.message : 'Sign-in failed.', 'error') }
     finally { setSaving(false) }
   }
