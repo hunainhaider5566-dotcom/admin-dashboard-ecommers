@@ -1,0 +1,21 @@
+import { useEffect, useState, type FormEvent } from 'react'
+import { Navigate, useNavigate } from 'react-router-dom'
+import { ShieldCheck } from 'lucide-react'
+import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../contexts/ToastContext'
+import { getSupabase } from '../../lib/supabase'
+type Factor = { id: string; status: string }
+export function AdminMfa() {
+ const { user, isAdmin, loading } = useAuth()
+ const { push } = useToast()
+ const navigate = useNavigate()
+ const [factor,setFactor]=useState<Factor|null>(null),[factorId,setFactorId]=useState(''),[qr,setQr]=useState(''),[secret,setSecret]=useState(''),[code,setCode]=useState(''),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[aal2,setAal2]=useState(false)
+ useEffect(()=>{let active=true; if(!user)return; void (async()=>{try{const c=getSupabase();const [{data:a},{data:f,error}]=await Promise.all([c.auth.mfa.getAuthenticatorAssuranceLevel(),c.auth.mfa.listFactors()]);if(error)throw error;if(!active)return;setAal2(a.currentLevel==='aal2');const v=(f.totp??[]).find(x=>x.status==='verified');if(v)setFactor(v);setReady(true)}catch(e){if(active){push(e instanceof Error?e.message:'Could not load MFA status.','error');setReady(true)}}})();return()=>{active=false}},[user?.id])
+ if(!loading&&!user)return <Navigate to="/login" replace/>
+ if(!loading&&user&&!isAdmin)return <Navigate to="/login" replace/>
+ if(aal2)return <Navigate to="/admin" replace/>
+ async function enroll(){setBusy(true);try{const {data,error}=await getSupabase().auth.mfa.enroll({factorType:'totp',friendlyName:'JTBazar Admin Authenticator'});if(error)throw error;setFactorId(data.id);setQr(data.totp.qr_code);setSecret(data.totp.secret)}catch(e){push(e instanceof Error?e.message:'MFA setup failed.','error')}finally{setBusy(false)}}
+ async function verify(e:FormEvent){e.preventDefault();setBusy(true);try{const c=getSupabase(),id=factor?.id??factorId;if(!id)throw new Error('Set up your authenticator first.');const {data:ch,error:ce}=await c.auth.mfa.challenge({factorId:id});if(ce)throw ce;const {error}=await c.auth.mfa.verify({factorId:id,challengeId:ch.id,code});if(error)throw error;const {data:a}=await c.auth.mfa.getAuthenticatorAssuranceLevel();if(a.currentLevel!=='aal2')throw new Error('Authenticator verification did not establish AAL2.');push('Authenticator verified.','success');navigate('/admin',{replace:true})}catch(e){push(e instanceof Error?e.message:'Authenticator verification failed.','error')}finally{setBusy(false)}}
+ if(loading||!ready)return <main className="admin-screen admin-screen--center">Checking administrator security…</main>
+ return <main className="admin-screen admin-screen--center"><section className="admin-login"><div className="admin-brand admin-brand--dark"><span className="admin-brand-mark">M</span><span>JTBazar<small>ADMIN STUDIO</small></span></div><div className="admin-mfa-icon"><ShieldCheck size={28}/></div><p className="admin-kicker">Mandatory administrator security</p><h1>Authenticator verification</h1><p>Password alone is not enough. Verify your authenticator to access JTBazar Admin.</p>{!factor&&!factorId?<button className="admin-button" disabled={busy} onClick={()=>void enroll()}>{busy?'Preparing…':'Set up authenticator'}</button>:<>{qr&&<div className="admin-mfa-setup"><img src={qr} alt="Authenticator QR code"/><p>Scan with Google Authenticator or Microsoft Authenticator.</p><label>Manual setup key<code>{secret}</code></label></div>}<form className="admin-form" onSubmit={e=>void verify(e)}><label>6-digit authenticator code<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={e=>setCode(e.target.value.replace(/\D/g,'').slice(0,6))} required/></label><button className="admin-button" disabled={busy||code.length!==6}>{busy?'Verifying…':'Verify and continue'}</button></form></>}<button className="admin-button admin-button--outline" onClick={async()=>{await getSupabase().auth.signOut();navigate('/login',{replace:true})}}>Sign out</button></section></main>
+}
