@@ -32,7 +32,8 @@ export function AdminEmailOtp() {
         setVerified(true)
         navigate('/admin-mfa', { replace: true })
       }
-      if (!methods.includes('password') && !methods.includes('otp')) navigate('/login', { replace: true })\n      setChecking(false)
+      if (!methods.includes('password') && !methods.includes('otp')) navigate('/login', { replace: true })
+      setChecking(false)
     })
     return () => { active = false }
   }, [navigate])
