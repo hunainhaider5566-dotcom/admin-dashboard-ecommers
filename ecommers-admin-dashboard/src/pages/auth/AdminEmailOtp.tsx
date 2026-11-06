@@ -28,11 +28,11 @@ export function AdminEmailOtp() {
     void getSupabase().auth.getSession().then(({ data, error }) => {
       if (!active) return
       const methods = !error && data.session ? readAuthMethods(data.session.access_token) : []
-      if (methods.includes('password') && methods.includes('otp')) {
+      if (methods.includes('otp')) {
         setVerified(true)
         navigate('/admin-mfa', { replace: true })
       }
-      setChecking(false)
+      if (!methods.includes('password') && !methods.includes('otp')) navigate('/login', { replace: true })\n      setChecking(false)
     })
     return () => { active = false }
   }, [navigate])
@@ -52,7 +52,7 @@ export function AdminEmailOtp() {
       const { data: sessionData, error: sessionError } = await getSupabase().auth.getSession()
       if (sessionError) throw sessionError
       const methods = sessionData.session ? readAuthMethods(sessionData.session.access_token) : []
-      if (!methods.includes('password') || !methods.includes('otp')) {
+      if (!methods.includes('otp')) {
         await getSupabase().auth.signOut()
         throw new Error('Email verification did not preserve the password login. Please sign in again.')
       }
