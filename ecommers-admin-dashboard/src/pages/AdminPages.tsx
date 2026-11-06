@@ -716,7 +716,7 @@ function Sellers() {
   const [items, setItems] = useState<AdminSeller[]>([])
   const [status, setStatus] = useState('all')
   const [error, setError] = useState<string | null>(null)
-  const [detailsId, setDetailsId] = useState<string | null>(null)
+  const [detailsTarget, setDetailsTarget] = useState<AdminSeller | null>(null)
   const [reasonTarget, setReasonTarget] = useState<{ item: AdminSeller; status: 'rejected' | 'suspended' } | null>(null)
   const [reason, setReason] = useState('')
   const [savingReview, setSavingReview] = useState(false)
@@ -778,28 +778,35 @@ function Sellers() {
         <thead><tr><th>Shop</th><th>Contact</th><th>Status</th><th>Submitted</th><th>Actions</th></tr></thead>
         <tbody>{items.map((item) => <Fragment key={item.id}>
           <tr>
-            <td><strong>{item.shop_name}</strong><small>{item.slug}<br />{item.description || 'No description'}</small></td>
+            <td className="admin-seller-shop-cell"><strong>{item.shop_name}</strong><small>{item.slug}</small></td>
             <td>{item.contact_email ?? '-'}{item.phone && <small>{item.phone}</small>}<SellerDocumentLink path={item.document_path} /></td>
             <td><em className={statusClass(item.status)}>{item.status}</em>{item.vendor_locked && <small className="admin-status admin-status--suspended">Locked</small>}{item.rejection_reason && <small>Review note: {item.rejection_reason}</small>}</td>
             <td>{formatDate(item.created_at)}</td>
             <td><div className="admin-action-row">
-              <button type="button" className="admin-small-button" onClick={() => setDetailsId(detailsId === item.id ? null : item.id)}>{detailsId === item.id ? 'Hide details' : 'Address & location'}</button>
+              <button type="button" className="admin-icon-button admin-seller-details-trigger" aria-label={`View details for ${item.shop_name}`} title="View shop details" onClick={() => setDetailsTarget(item)}><Eye size={17} /></button>
               {(item.status === 'pending' || item.status === 'rejected') && <button type="button" className="admin-small-button" onClick={() => void review(item, 'approved')}>Approve</button>}
               {(item.status === 'pending' || item.status === 'rejected') && <button type="button" className="admin-small-button admin-small-button--danger" onClick={() => openReasonModal(item, 'rejected')}>{item.status === 'rejected' ? 'Update rejection' : 'Reject'}</button>}
               {item.status === 'approved' && <button type="button" className="admin-small-button admin-small-button--danger" onClick={() => openReasonModal(item, 'suspended')}>Suspend</button>}
               {item.status === 'suspended' && <button type="button" className="admin-small-button" onClick={() => void review(item, 'approved')}>Reactivate</button>}<button type="button" className={item.vendor_locked ? 'admin-small-button' : 'admin-small-button admin-small-button--danger'} onClick={() => { const action = item.vendor_locked ? 'unlock' : 'lock'; if (!window.confirm(`Are you sure you want to ${action} ${item.shop_name}? ${item.vendor_locked ? 'The seller will be able to edit again.' : 'The seller will not be able to change shop, products or inventory.'}`)) return; void setAdminVendorLock(item.id, !item.vendor_locked).then(() => { push(item.vendor_locked ? 'Vendor unlocked. Seller editing is enabled again.' : 'Vendor locked. Database writes from this seller are blocked.', 'success'); load() }).catch((cause) => push(cause instanceof Error ? cause.message : 'Vendor lock could not be changed.', 'error')) }}>{item.vendor_locked ? 'Unlock vendor' : 'Lock vendor'}</button>
             </div></td>
           </tr>
-          {detailsId === item.id && <tr className="admin-seller-details-row"><td colSpan={5}>
-            <div className="admin-seller-details">
-              <section><h4>Current Address</h4><p>{item.current_address || 'Not provided in this legacy application'}</p></section>
-              <section><h4>Complete Address</h4><p>{item.complete_address || 'Not provided in this legacy application'}</p></section>
-              <section><h4>Location Details</h4><p><strong>Area / map label:</strong> {item.shop_location_label || 'Not provided'}</p><p><strong>Coordinates:</strong> {item.shop_lat != null && item.shop_lng != null ? `${item.shop_lat}, ${item.shop_lng}` : 'Not captured'}</p>{item.shop_lat != null && item.shop_lng != null && <a href={`https://www.google.com/maps?q=${item.shop_lat},${item.shop_lng}`} target="_blank" rel="noreferrer">Open shop location in Google Maps</a>}</section>
-              <section><h4>Private Verification</h4><p>{item.document_path ? 'Private document uploaded. Open it using the secure document link above.' : 'No document on file.'}</p></section>
-            </div>
-          </td></tr>}
+
         </Fragment>)}</tbody>
       </table></div>}
+    {detailsTarget && <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetailsTarget(null) }}>
+      <section className="admin-modal admin-seller-details-modal" role="dialog" aria-modal="true" aria-labelledby="seller-details-title">
+        <div className="admin-panel-heading"><div><p className="admin-kicker">Seller application details</p><h3 id="seller-details-title">{detailsTarget.shop_name}</h3><p className="admin-copy">{detailsTarget.slug}</p></div><button type="button" className="admin-icon-button" aria-label="Close details" onClick={() => setDetailsTarget(null)}><X size={17} /></button></div>
+        <div className="admin-seller-details">
+          <section className="admin-seller-details__wide"><h4>Shop description</h4><p>{detailsTarget.description || 'No description provided.'}</p></section>
+          <section><h4>Contact information</h4><p><strong>Email:</strong> {detailsTarget.contact_email || 'Not provided'}</p><p><strong>Phone:</strong> {detailsTarget.phone || 'Not provided'}</p></section>
+          <section><h4>Application status</h4><p><strong>Status:</strong> {detailsTarget.status}</p><p><strong>Submitted:</strong> {formatDate(detailsTarget.created_at)}</p>{detailsTarget.vendor_locked && <p>Vendor account is locked.</p>}{detailsTarget.rejection_reason && <p><strong>Review note:</strong> {detailsTarget.rejection_reason}</p>}</section>
+          <section><h4>Current address</h4><p>{detailsTarget.current_address || 'Not provided'}</p></section>
+          <section><h4>Complete address</h4><p>{detailsTarget.complete_address || 'Not provided'}</p></section>
+          <section><h4>Shop location</h4><p><strong>Area / map label:</strong> {detailsTarget.shop_location_label || 'Not provided'}</p><p><strong>Coordinates:</strong> {detailsTarget.shop_lat != null && detailsTarget.shop_lng != null ? `${detailsTarget.shop_lat}, ${detailsTarget.shop_lng}` : 'Not captured'}</p>{detailsTarget.shop_lat != null && detailsTarget.shop_lng != null && <a href={`https://www.google.com/maps?q=${detailsTarget.shop_lat},${detailsTarget.shop_lng}`} target="_blank" rel="noreferrer">Open shop location in Google Maps</a>}</section>
+          <section><h4>Verification document</h4>{detailsTarget.document_path ? <><p>Private verification document is available.</p><SellerDocumentLink path={detailsTarget.document_path} /></> : <p>No verification document uploaded.</p>}</section>
+        </div>
+      </section>
+    </div>}
     {reasonTarget && <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingReview) { setReasonTarget(null); setReason('') } }}>
       <section className="admin-modal admin-seller-review-modal" role="dialog" aria-modal="true" aria-labelledby="seller-review-title">
         <div className="admin-panel-heading"><div><p className="admin-kicker">Vendor application review</p><h3 id="seller-review-title">{reasonTarget.status === 'rejected' ? 'Reject application' : 'Suspend vendor'}</h3></div><button type="button" className="admin-icon-button" aria-label="Close" disabled={savingReview} onClick={() => { setReasonTarget(null); setReason('') }}><X size={17}/></button></div>
