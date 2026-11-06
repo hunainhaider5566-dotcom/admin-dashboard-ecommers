@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Navigate, useNavigate } from 'react-router-dom'
 import { useToast } from '../../contexts/ToastContext'
 import { useAuth } from '../../contexts/AuthContext'
@@ -23,7 +23,7 @@ export function AdminEmailOtp() {
 
   const email = user?.email ?? ''
 
-  useState(() => {
+  useEffect(() => {
     let active = true
     void getSupabase().auth.getSession().then(({ data, error }) => {
       if (!active) return
@@ -35,7 +35,7 @@ export function AdminEmailOtp() {
       setChecking(false)
     })
     return () => { active = false }
-  })
+  }, [navigate])
 
   if (loading || checking) return <main className="admin-screen admin-screen--center">Checking administrator access…</main>
   if (!user) return <Navigate to="/login" replace />
