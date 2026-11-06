@@ -75,9 +75,15 @@ function useAutoRefresh(refresh: (quiet?: boolean) => void, intervalMs = 20000) 
 
 function Guard({ children }: { children: ReactNode }) {
   const { loading, user, isAdmin, configured, error } = useAuth()
-  if (loading) return <div className="admin-screen"><Loading /></div>
+  const [mfaReady,setMfaReady]=useState(false)
+  const [aal2,setAal2]=useState(false)
+  const navigate=useNavigate()
+  useEffect(()=>{let active=true;if(!user||!isAdmin){setMfaReady(false);setAal2(false);return()=>{active=false}};void getSupabase().auth.mfa.getAuthenticatorAssuranceLevel().then(({data,error:mfaError})=>{if(!active)return;setAal2(!mfaError&&data.currentLevel==='aal2');setMfaReady(true)}).catch(()=>{if(active){setAal2(false);setMfaReady(true)}});return()=>{active=false}},[user?.id,isAdmin])
+  useEffect(()=>{if(!loading&&user&&isAdmin&&mfaReady&&!aal2)navigate('/admin-mfa',{replace:true})},[loading,user?.id,isAdmin,mfaReady,aal2,navigate])
+  if (loading || (user&&isAdmin&&!mfaReady)) return <div className="admin-screen"><Loading /></div>
   if (!configured || !user) return <div className="admin-screen admin-screen--center"><ShieldAlert size={34} /><h1>Administrator sign-in required</h1><p>Sign in with an authorized JTBazar administrator account to continue.</p><Link className="admin-button" to="/login">Go to sign in</Link></div>
   if (error || !isAdmin) return <div className="admin-screen admin-screen--center"><ShieldAlert size={34} /><h1>Access denied</h1><p>{error ?? 'This account does not have the administrator role.'}</p><Link className="admin-button" to="/">Return to storefront</Link></div>
+  if(!aal2)return <div className="admin-screen"><Loading /></div>
   return <>{children}</>
 }
 
