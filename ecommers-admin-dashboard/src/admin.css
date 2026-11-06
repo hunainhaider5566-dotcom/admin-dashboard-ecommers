@@ -475,3 +475,16 @@
 .admin-mfa-setup p{color:#64748b;font-size:13px;line-height:1.5}
 .admin-mfa-setup label{display:grid;gap:8px;text-align:left;font-size:12px;font-weight:700}
 .admin-mfa-setup code{overflow-wrap:anywhere;padding:10px;border-radius:8px;background:#f1f5f9;font-size:12px}
+
+
+/* Compact seller application rows with a dedicated details modal. */
+.admin-seller-shop-cell { max-width: 260px; }
+.admin-seller-shop-cell > strong { display: block; overflow-wrap: anywhere; }
+.admin-seller-shop-cell > small { display: block; margin-top: 4px; color: var(--admin-muted, #77786f); }
+.admin-seller-details-trigger { display: inline-grid; place-items: center; width: 36px; height: 36px; min-width: 36px; border: 1px solid var(--admin-line, #dedbd2); border-radius: 8px; background: #fff; color: var(--admin-ink, #30332e); cursor: pointer; }
+.admin-seller-details-trigger:hover { border-color: #b65d3b; color: #9a4a30; background: #fbf6f2; }
+.admin-seller-details-modal { width: min(760px, calc(100vw - 32px)); max-height: min(86vh, 820px); overflow: auto; }
+.admin-seller-details-modal .admin-panel-heading { align-items: flex-start; }
+.admin-seller-details-modal .admin-seller-details { padding: 0; margin-top: 18px; }
+.admin-seller-details__wide { grid-column: 1 / -1; }
+@media(max-width:650px) { .admin-seller-details-modal { width: calc(100vw - 20px); max-height: 90vh; padding: 16px; } .admin-seller-details-modal .admin-seller-details { grid-template-columns: 1fr; } .admin-seller-details__wide { grid-column: auto; } }
