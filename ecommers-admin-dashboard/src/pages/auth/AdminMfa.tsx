@@ -10,7 +10,7 @@ export function AdminMfa() {
  const { push } = useToast()
  const navigate = useNavigate()
  const [factor,setFactor]=useState<Factor|null>(null),[factorId,setFactorId]=useState(''),[qr,setQr]=useState(''),[secret,setSecret]=useState(''),[code,setCode]=useState(''),[ready,setReady]=useState(false),[busy,setBusy]=useState(false),[aal2,setAal2]=useState(false)
- useEffect(()=>{let active=true; if(!user)return; void (async()=>{try{const c=getSupabase();const [{data:a},{data:f,error}]=await Promise.all([c.auth.mfa.getAuthenticatorAssuranceLevel(),c.auth.mfa.listFactors()]);if(error)throw error;if(!active)return;setAal2(a.currentLevel==='aal2');const v=(f.totp??[]).find(x=>x.status==='verified');if(v)setFactor(v);setReady(true)}catch(e){if(active){push(e instanceof Error?e.message:'Could not load MFA status.','error');setReady(true)}}})();return()=>{active=false}},[user?.id])
+ useEffect(()=>{let active=true; if(!user)return; void (async()=>{try{const c=getSupabase();const [{data:a},{data:f,error}]=await Promise.all([c.auth.mfa.getAuthenticatorAssuranceLevel(),c.auth.mfa.listFactors()]);if(error)throw error;if(!active)return;setAal2(a?.currentLevel==='aal2');const v=(f.totp??[]).find(x=>x.status==='verified');if(v)setFactor(v);setReady(true)}catch(e){if(active){push(e instanceof Error?e.message:'Could not load MFA status.','error');setReady(true)}}})();return()=>{active=false}},[user?.id])
  if(!loading&&!user)return <Navigate to="/login" replace/>
  if(!loading&&user&&!isAdmin)return <Navigate to="/login" replace/>
  if(aal2)return <Navigate to="/admin" replace/>
