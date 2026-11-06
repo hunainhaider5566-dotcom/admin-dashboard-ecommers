@@ -69,7 +69,7 @@ export function AdminEmailOtp() {
     <p className="admin-kicker">Security step 2 of 3</p><h1>Verify your email</h1>
     <p>Enter the six-digit code sent to <strong>{email}</strong>. Your password has already been verified.</p>
     <form className="admin-form" onSubmit={(event) => void verify(event)}>
-      <label>Email verification code<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\\D/g, '').slice(0, 6))} placeholder="000000" required /></label>
+      <label>Email verification code<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" required /></label>
       <button className="admin-button" disabled={busy || code.length !== 6}>{busy ? 'Verifying…' : 'Verify email and continue'}</button>
     </form>
     <button className="admin-button admin-button--outline" onClick={async () => { await getSupabase().auth.signOut(); navigate('/login', { replace: true }) }}>Cancel and sign out</button>
