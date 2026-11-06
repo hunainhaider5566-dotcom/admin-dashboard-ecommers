@@ -1103,8 +1103,8 @@ function StoreSettings() {
     const supportPhone = String(data.get('support_phone') ?? '').trim()
     const supportWhatsapp = String(data.get('support_whatsapp') ?? '').trim()
     if (supportEmail && !isValidEmail(supportEmail)) { push('Enter a valid support email address.', 'error'); return }
-    if (supportPhone && !isValidPakistaniMobile(supportPhone)) { push('Support phone must be 03001234567 or +923001234567.', 'error'); return }
-    if (supportWhatsapp && !isValidPakistaniMobile(supportWhatsapp)) { push('Support WhatsApp must be 03001234567 or +923001234567.', 'error'); return }
+    if (supportPhone && !isValidPakistaniMobile(supportPhone)) { push('Support phone must be 03 followed by 9 digits or +923 followed by 9 digits (e.g. 03001234567, 03700822507, +923001234567 or +923700822507).', 'error'); return }
+    if (supportWhatsapp && !isValidPakistaniMobile(supportWhatsapp)) { push('Support WhatsApp must be 03 followed by 9 digits or +923 followed by 9 digits (e.g. 03001234567, 03700822507, +923001234567 or +923700822507).', 'error'); return }
     setSaving(true)
     try {
       const next = await updateAdminStoreSettings({ store_name: String(data.get('store_name') ?? '').trim(), support_email: supportEmail || null, support_phone: supportPhone ? normalizePakistaniMobile(supportPhone) : null, support_whatsapp: supportWhatsapp ? normalizePakistaniMobile(supportWhatsapp) : null, delivery_fee: deliveryFee, cod_enabled: data.get('cod_enabled') === 'on', return_window_days: returnWindowDays })
@@ -1704,7 +1704,7 @@ function ManualOrders() {
   const selectProduct = (index: number, productId: string) => { const product = products.find(p => p.id === productId); setFormItems(v => v.map((item,i) => i === index ? { ...item, product_id: product?.id ?? '', category_id: product?.category_id ?? item.category_id, product_search: product?.name ?? '', seller_id: (product as any)?.seller_id ?? '', product_name_snapshot: product?.name ?? '', unit_price: Number(product?.price ?? 0), seller_name_snapshot: '', sku_snapshot: product?.sku ?? '' } : item)) }
   const saveOrder = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!isValidPakistaniMobile(phone)) { push('Enter exactly 03001234567 or +923001234567.', 'error'); return }
+    if (!isValidPakistaniMobile(phone)) { push('Enter 03 followed by 9 digits or +923 followed by 9 digits.', 'error'); return }
     if (email.trim() && !isValidEmail(email.trim())) { push('Enter a valid customer email address.', 'error'); return }
     if (!formItems.length || formItems.some(item => !item.product_name_snapshot.trim() || Number(item.quantity) < 1 || Number(item.unit_price) < 0 || (item.mode === 'catalog' && !item.product_id))) {
       setError('Har item ka naam, quantity (kam az kam 1) aur valid price enter karein.'); return
