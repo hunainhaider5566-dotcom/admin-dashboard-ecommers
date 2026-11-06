@@ -6,6 +6,18 @@ import type { Database } from '../types/database'
 type Profile = Database['public']['Tables']['profiles']['Row']
 type AuthValue = { session: Session | null; user: User | null; profile: Profile | null; isAdmin: boolean; loading: boolean; configured: boolean; error: string | null; displayName: string | null; signIn: (email: string, password: string) => Promise<void>; signOut: () => Promise<void> }
 const AuthContext = createContext<AuthValue | null>(null)
+
+function hasVerifiedEmailOtp(session: Session | null) {
+  if (!session?.access_token) return false
+  try {
+    const segment = session.access_token.split('.')[1]
+    const normalized = segment.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(segment.length / 4) * 4, '=')
+    const claims = JSON.parse(atob(normalized)) as { amr?: Array<{ method?: string }> }
+    return Array.isArray(claims.amr) && claims.amr.some((entry) => entry.method === 'otp')
+  } catch {
+    return false
+  }
+}
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null); const [profile, setProfile] = useState<Profile | null>(null); const [isAdmin, setIsAdmin] = useState(false); const [loading, setLoading] = useState(isSupabaseConfigured); const [error, setError] = useState<string | null>(null)
   useEffect(() => { if (!supabase) { setLoading(false); return }; const listener = supabase.auth.onAuthStateChange((_event, next) => { setSession(next); setLoading(false) }); void supabase.auth.getSession().then(({ data, error: sessionError }) => { setSession(data.session); if (sessionError) setError(sessionError.message); setLoading(false) }); return () => listener.data.subscription.unsubscribe() }, [])
